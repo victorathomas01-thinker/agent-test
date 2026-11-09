@@ -27,6 +27,8 @@
   },
   "discovery": {
     "ashby_boards": ["ramp"],
+    "career_sites": [],
+    "career_page_budget": 10,
     "smartrecruiters_companies": ["BoschGroup"],
     "greenhouse_boards": [
       "canonical",
@@ -42,7 +44,7 @@
       "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json",
       "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json"
     ],
-    "max_discovered_boards": 25
+    "max_discovered_boards": 60
   },
   "preferences": {
     "strategy": "fit",

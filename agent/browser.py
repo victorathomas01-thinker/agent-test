@@ -198,7 +198,8 @@ def preview(url, cfg):
         browser = playwright.chromium.launch(headless=cfg['automation'].get('headless', True))
         try:
             source = browser.new_context(accept_downloads=False, service_workers='block')
-            source.route('**/*', lambda route: route.continue_() if valid_application_url(route.request.url)
+            source.route('**/*', lambda route: route.continue_()
+                         if route.request.method in {'GET', 'HEAD'} and valid_application_url(route.request.url)
                          else route.abort())
             page = source.new_page()
             response = page.goto(url, wait_until='domcontentloaded', timeout=30000)

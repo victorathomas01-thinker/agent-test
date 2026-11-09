@@ -1,5 +1,17 @@
 # Personal Job Agent
 
+The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
+
+## Interactive workbench
+
+Run `main.py serve` and open the printed local URL in Edge. **All Jobs** includes excluded, expired, and unverified records. Filter and export the collection, inspect score explanations, select listings across pages, and click **Prepare selected offline**. A generated offline preview does not transfer entered values into an employer tab.
+
+For attended preparation, enable the local attended setting and run `main.py review-selected --attach-master` in an interactive terminal. Check the exact list of postings and type `PREPARE`. Supported Greenhouse and Lever forms open in a controlled Edge session. Keep that terminal open while reviewing. If you advance tab 2 manually, type `next 2` to prepare its next supported step. You click Submit in Edge. Press Enter in the terminal to check receipts and close the session.
+
+`main.py discover-web --budget 2` runs the example public employer sources. Set `discovery.career_sites` in the ignored local config to include approved career URLs in scheduled discovery. Each entry supplies a company, HTTPS URL, and optional `render` flag. Read-only crawling respects robots rules and confines requests to the configured origin. Unsupported or unverified links can still be reviewed from All Jobs.
+
+`main.py facts` shows locally verified facts and their source. Use `facts --revoke KEY` to stop using a fact. Reconfirm with `set` or `remember`. Ordinary work authorization and unrestricted status are treated as distinct scopes.
+
 Discover jobs from public Greenhouse and Lever boards, filter and rank them, and rehearse filling application forms locally. Automatic submission is disabled. In a dry run the agent opens the posting without applicant data, then fills a disconnected copy with site scripts disabled.
 
 ## Windows setup

@@ -3,7 +3,7 @@
 from collections import Counter
 from mimetypes import guess_type
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from .browser import FIELDS, IDENTITY_FIELDS, field_metadata, find_form_frame, is_resume_field
 from .core import answer_for, canonical_url, normalize_question, record_attempt
@@ -131,6 +131,20 @@ def allowed_step(job, url):
     return bool(re.fullmatch(re.escape(root) + r'/(?:apply/|application/)?steps?/[a-zA-Z0-9_-]+', path))
 
 
+def allowed_form_frame(job, url):
+    if not official_job_url(job):
+        return False
+    if allowed_step(job, url):
+        return True
+    current, expected = urlsplit(url), urlsplit(job['url'])
+    return (
+        job['id'].startswith('greenhouse:')
+        and (current.scheme, current.netloc, current.path.rstrip('/')) ==
+            (expected.scheme, expected.netloc, '/embed/job_app')
+        and parse_qs(current.query).get('token') == [job['id'].rsplit(':', 1)[-1]]
+    )
+
+
 def contact_form(page, job, later_step=False):
     original_url = page.url
     if not allowed_step(job, original_url):
@@ -140,10 +154,11 @@ def contact_form(page, job, later_step=False):
         return forms.first if forms.count() == 1 else None
     if not official_job_url({**dict(job), 'url': original_url}):
         return None
-    if find_form_frame(page) is not page.main_frame or page.url != original_url:
+    frame = find_form_frame(page)
+    if frame is None or page.url != original_url or not allowed_form_frame(job, frame.url):
         return None
-    forms = page.locator('form:visible').filter(
-        has=page.locator(':is(input[type=email], input[autocomplete=email], input[name=email i], input[id=email i]):visible')
+    forms = frame.locator('form:visible, [role=form]:visible').filter(
+        has=frame.locator(':is(input[type=email], input[autocomplete=email], input[name=email i], input[id=email i]):visible')
     )
     return forms.first if forms.count() == 1 else None
 
@@ -276,14 +291,18 @@ def select_verified_combobox(page, node, labels, original_url, priority=()):
         return False
     if node.get_attribute('aria-expanded') != 'true':
         node.click(timeout=1500)
-    control = page.wait_for_function(
+    frame = node.owner_frame()
+    if frame is None:
+        return False
+    frame_url = frame.url
+    control = frame.wait_for_function(
         "node => node.isConnected && node.getAttribute('aria-controls')",
         arg=node, timeout=1500,
     ).json_value()
-    if page.url != original_url:
+    if page.url != original_url or frame.url != frame_url:
         return False
-    list_id = page.evaluate('id => CSS.escape(id)', control)
-    listbox = page.locator(f'#{list_id}[role="listbox"]:visible')
+    list_id = frame.evaluate('id => CSS.escape(id)', control)
+    listbox = frame.locator(f'#{list_id}[role="listbox"]:visible')
     listbox.wait_for(state='visible', timeout=1500)
     if listbox.get_attribute('aria-multiselectable') == 'true':
         return False
@@ -297,7 +316,7 @@ def select_verified_combobox(page, node, labels, original_url, priority=()):
                 options = preferred
                 break
     if (listbox.get_by_role('option', selected=True).count() or options.count() != 1
-            or not options.first.is_enabled() or page.url != original_url):
+            or not options.first.is_enabled() or page.url != original_url or frame.url != frame_url):
         return False
     options.first.click(timeout=1500)
     return page.url == original_url
@@ -326,14 +345,25 @@ def print_step_review(page):
 
 
 def prepare_step(page, job, prefill, attachment, verified, later_step=False):
+    def signature():
+        return {(field['type'], field['id'], field['name'], field['label']) for field in field_metadata(page)
+                if field['visible'] and not field['disabled']}
+
+    before = signature() if verified is not None else set()
+    contact_filled = []
     if prefill is not None:
-        filled = prefill_contact(page, job, prefill, later_step)
-        print('Prefilled contact fields: ' + ', '.join(filled) if filled
-              else 'Contact fields need manual entry on this form.')
+        contact_filled = prefill_contact(page, job, prefill, later_step)
     if verified is not None:
         filled = prefill_verified_fields(page, job, verified, later_step)
+        if allowed_step(job, page.url) and signature() - before:
+            if prefill is not None:
+                contact_filled.extend(prefill_contact(page, job, prefill, later_step))
+            filled.extend(prefill_verified_fields(page, job, verified, later_step))
         print('Prefilled verified answers: ' + ', '.join(filled) if filled
               else 'Verified questions need manual entry on this form.')
+    if prefill is not None:
+        print('Prefilled contact fields: ' + ', '.join(contact_filled) if contact_filled
+              else 'Contact fields need manual entry on this form.')
     if attachment is not None:
         attached = attach_reviewed_resume(page, job, attachment, later_step)
         print('Reviewed resume attached.' if attached else 'Attach your resume manually on this form.')
@@ -358,16 +388,7 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
     job = {**dict(job), 'url': initial_url}
     attachment = prepare_step(page, job, prefill, attachment, verified)
     initial = page.locator('body').inner_text(timeout=5000)
-    origin = urlsplit(initial_url).netloc
-    successful_posts = []
-
-    def observe(response):
-        address = urlsplit(response.url)
-        if (response.request.method == 'POST' and address.scheme == 'https'
-                and address.netloc == origin and (response.ok or response.status == 303)):
-            successful_posts.append(True)
-
-    page.on('response', observe)
+    successful_posts = observe_submission(page, initial_url)
     while True:
         choice = wait('Click Next yourself, then type next here to prepare that step. '
                       'After submitting in Edge, press Enter here to check for a receipt. ')
@@ -384,6 +405,24 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
             continue
         attachment = prepare_step(page, job, prefill, attachment, verified, later_step=True)
         successful_posts.clear()
+    return browser_outcome(con, job, page, initial_url, initial, successful_posts)
+
+
+def observe_submission(page, initial_url):
+    origin = urlsplit(initial_url).netloc
+    successful_posts = []
+
+    def observe(response):
+        address = urlsplit(response.url)
+        if (response.request.method == 'POST' and address.scheme == 'https'
+                and address.netloc == origin and (response.ok or response.status == 303)):
+            successful_posts.append(True)
+
+    page.on('response', observe)
+    return successful_posts
+
+
+def browser_outcome(con, job, page, initial_url, initial, successful_posts):
     text = check_confirmation(page, job, initial_url, initial)
     if not successful_posts:
         return 'submission_pending'

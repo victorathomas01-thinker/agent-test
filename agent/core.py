@@ -10,6 +10,8 @@ from pathlib import Path
 
 from .employers import board_from_url, find_boards
 from .matching import ADJACENT_ROLES, fit_signals, qualifications
+from .priority import rank_job
+from .careers import discover_sites
 from .sources import smartrecruiters_jobs
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,7 +21,11 @@ CONFIG = ROOT / 'config.json'
 def load_config():
     if not CONFIG.exists():
         raise RuntimeError('config.json missing. Run python main.py init first.')
-    return with_defaults(json.loads(CONFIG.read_text(encoding='utf-8-sig')))
+    cfg = with_defaults(json.loads(CONFIG.read_text(encoding='utf-8-sig')))
+    candidate = ROOT / 'private' / 'candidate-profile.json'
+    if candidate.is_file():
+        cfg['_candidate_profile'] = json.loads(candidate.read_text(encoding='utf-8-sig'))
+    return cfg
 
 
 def with_defaults(saved):
@@ -31,7 +37,8 @@ def with_defaults(saved):
 def save_config(cfg):
     with NamedTemporaryFile(mode='w', encoding='utf-8', dir=ROOT, prefix='config.',
                             suffix='.local.json', delete=False) as temporary:
-        json.dump(cfg, temporary, indent=2, ensure_ascii=False)
+        json.dump({key: value for key, value in cfg.items() if not key.startswith('_')},
+                  temporary, indent=2, ensure_ascii=False)
         temporary.write('\n')
     path = Path(temporary.name)
     try:
@@ -61,6 +68,16 @@ def connect():
        folder TEXT NOT NULL, PRIMARY KEY (job_id, version))''')
     con.execute('''CREATE TABLE IF NOT EXISTS followups (
        job_id TEXT PRIMARY KEY, due_on TEXT NOT NULL)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS selections (
+       job_id TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at TEXT NOT NULL,
+       attempts INTEGER NOT NULL DEFAULT 0, blocker TEXT NOT NULL DEFAULT '', version TEXT NOT NULL DEFAULT '')''')
+    con.execute('''CREATE TABLE IF NOT EXISTS web_checks (
+       job_id TEXT PRIMARY KEY, verification TEXT NOT NULL, deadline TEXT NOT NULL DEFAULT '')''')
+    con.execute('''CREATE TABLE IF NOT EXISTS verified_facts (
+       key TEXT PRIMARY KEY, value TEXT NOT NULL, source TEXT NOT NULL, scope TEXT NOT NULL,
+       verified_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS eligibility_overrides (
+       job_id TEXT PRIMARY KEY, created_at TEXT NOT NULL)''')
     con.commit()
     return con
 
@@ -228,6 +245,10 @@ def discover(cfg, coverage=None):
                 coverage.extend(completed)
             if error:
                 errors.append(error)
+    if discovery.get('career_sites'):
+        postings, problems = discover_sites(discovery['career_sites'], discovery.get('career_page_budget', 10), plain)
+        jobs.extend(postings)
+        errors.extend(problems)
     return jobs, errors
 
 
@@ -272,20 +293,30 @@ def preferred_location(location, preferences):
 def evaluate(job,cfg):
     title=job['title'].lower(); description=job['description'].lower(); location=job['location'].lower()
     p=cfg['preferences']; reasons=[]
-    if p['exclude_contract'] and (job.get('employment_type', '').casefold() in {'contract', 'temporary'}
+    if job.get('verification') == 'unverified':
+        reasons.append('Posting availability could not be verified')
+    if re.search(r'\bunpaid\s+(?:internship|role|position|opportunity)\b', title + ' ' + description):
+        reasons.append('Unpaid opportunity')
+    if p['exclude_contract'] and ((job.get('employment_type') or '').casefold() in
+            {'contract', 'temporary', 'contracttohire', 'contract to hire', 'contract-to-hire', 'freelance'}
             or re.search(r'\b(contract(or)?|1099|freelance)\b', title)
             or re.search(r'\b(contract position|contract role|1099 position)\b', description[:1500])):
         reasons.append('Contract work')
     if p['exclude_senior'] and re.search(r'\b(senior|sr\.?|principal|staff|lead|director|manager|architect|iii|iv)\b',title):
         reasons.append('Senior-level title')
-    reasons.extend(qualifications(description, cfg.get('profile', {}), p['exclude_hard_gpa_over']))
+    candidate = cfg.get('_candidate_profile', {})
+    reasons.extend(qualifications(description, {**cfg.get('profile', {}), **candidate},
+                                  candidate.get('gpa', p['exclude_hard_gpa_over'])))
     verified = cfg.get('verified_answers', {})
     if re.search(r'\b(no (?:visa )?sponsorship|(?:cannot|unable to|will not) sponsor)\b', description) and verified.get('needs_sponsorship_now_or_future') is not False:
         reasons.append('Review sponsorship restriction')
     if re.search(r'\b(?:must be|must already be) (?:legally )?authorized to work in the (?:u\.?s\.?|united states)\b', description) and verified.get('work_authorized_us') is not True:
         reasons.append('Review US work authorization requirement')
-    if re.search(r'\b(?:must have|requires?)\s+(?:a\s+)?(?:completed\s+)?(?:bachelor.?s|master.?s|phd)\s+degree\b',description) and not re.search(r'\bintern(ship)?\b',title):
-        reasons.append('May require completed degree — manually review')
+    degree = re.search(r'\b(?:must have|must hold|requires?)\s+(?:a\s+)?(?:completed\s+)?'
+                       r'(?:bachelor.?s|master.?s|phd)\s+degree\b[^.!?]*', description)
+    if degree and not re.search(r'\b(?:equivalent|preferred|in progress)\b', degree[0]):
+        if 'completed' in degree[0] or not re.search(r'\bintern(ship)?\b', title):
+            reasons.append('May require completed degree — manually review')
     search_title = re.sub(r'\bsoftware engineering\b', 'software engineer', title)
     keywords = {key.lower() for key in p['keywords'] if key}
     if p.get('include_adjacent_roles'):
@@ -293,9 +324,13 @@ def evaluate(job,cfg):
     fields = keywords - {'intern', 'internship', 'co-op', 'junior', 'entry level'}
     hits = {key for key in keywords
             if re.search(r'(?<!\w)' + re.escape(key) + r'(?!\w)', search_title)}
+    priority = rank_job(job, cfg.get('_candidate_evidence', ''))
     if fields and not fields.intersection(hits):
-        reasons.append('No matching job field')
+        if priority['category'] == 'Other':
+            reasons.append('No matching job field')
     score = len(hits) * 25
+    if not hits and priority['category'] != 'Other':
+        score += 25
     if 'intern' in title or 'co-op' in title or 'entry' in title or 'junior' in title: score+=18
     location_matches = preferred_location(location, p['locations'])
     if location_matches: score+=15
@@ -308,8 +343,7 @@ def evaluate(job,cfg):
     if score < p['minimum_score']: reasons.append('Below match threshold')
     if not valid_application_url(job.get('url', 'https://example.invalid')):
         reasons.append('Application URL missing or invalid')
-    bonus, _ = fit_signals(job, cfg)
-    return score + bonus, not reasons, '; '.join(reasons)
+    return priority['score'], not reasons, '; '.join(reasons)
 
 
 def valid_application_url(url):
@@ -366,6 +400,9 @@ def store_jobs(jobs, cfg):
                 con.execute('INSERT OR REPLACE INTO job_details VALUES (?, ?, ?, ?, ?)',
                             (job['id'], *(job.get(key, '') for key in
                              ('published_at', 'workplace', 'employment_type', 'salary'))))
+            if job.get('verification'):
+                con.execute('INSERT OR REPLACE INTO web_checks VALUES (?, ?, ?)',
+                            (job['id'], job['verification'], str(job.get('deadline') or '')))
             existing[job['id']] = job['source']
             if identity:
                 known_urls[identity] = job['id']
@@ -391,8 +428,10 @@ def import_urls(path, cfg):
 def refresh_eligibility(con, cfg):
     updates = []
     for job in con.execute("""SELECT j.*, COALESCE(d.workplace, '') AS workplace,
-                                     COALESCE(d.employment_type, '') AS employment_type
-                              FROM jobs j LEFT JOIN job_details d ON j.id=d.job_id"""):
+                                     COALESCE(d.employment_type, '') AS employment_type,
+                                     COALESCE(d.salary, '') AS salary, w.verification
+                              FROM jobs j LEFT JOIN job_details d ON j.id=d.job_id
+                              LEFT JOIN web_checks w ON j.id=w.job_id"""):
         score, eligible, reason = evaluate(dict(job), cfg)
         updates.append((score, int(eligible), reason, job['id']))
     with con:
@@ -432,7 +471,13 @@ PROFILE_LABELS = {
 }
 
 VERIFIED_PATTERNS = {
-    'work_authorized_us': r'are you (?:legally )?(?:authorized|eligible) to work in (?:the )?(?:united states|u\.?s\.?a?\.?)',
+    'work_authorized_us': (
+        r'(?:are you (?:legally )?(?:authorized|eligible|permitted) to work in (?:the )?'
+        r'(?:united states|u\.?s\.?a?\.?)'
+        r'|do you have (?:legal )?(?:work authorization|authorization to work) in (?:the )?'
+        r'(?:united states|u\.?s\.?a?\.?)'
+        r'|are you (?:legally )?(?:authorized|eligible|permitted) to work in the united states of america)'
+    ),
     'needs_sponsorship_now_or_future': r'(?:do|will) you (?:now or in the future )?(?:require|need) (?:visa |employment )?sponsorship(?: now or in the future)?',
     'over_18': r'are you (?:at least 18(?: years old| years of age)?|18 years of age or older)',
     'willing_to_relocate': r'are you willing to relocate',
