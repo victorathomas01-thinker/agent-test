@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Synthetic application</title>
+<form onsubmit="event.preventDefault();document.body.textContent='Application submitted';">
+  <label for="first">First Name</label><input id="first" required>
+  <label for="last">Last Name</label><input id="last" required>
+  <label for="email">Email</label><input id="email" type="email" required>
+  <label for="auth">Are you legally authorized to work in the United States?</label>
+  <select id="auth" required><option value="">Choose...</option><option>Yes</option><option>No</option></select>
+  <label for="resume">Attach</label><input id="resume" name="resume" type="file" required>
+  <button type="submit">Submit Application</button>
+</form>
+</html>

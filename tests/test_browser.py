@@ -1,0 +1,75 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from agent.browser import apply_to_page, preview_snapshot
+
+FIXTURE = Path(__file__).with_name('mock_form.html')
+CFG = {
+    'profile': {'first_name': 'Test', 'last_name': 'Applicant', 'email': 'test@example.invalid'},
+    'verified_answers': {'work_authorized_us': True},
+    'automation': {'headless': True},
+}
+
+
+class BrowserTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from playwright.sync_api import sync_playwright
+
+        playwright = sync_playwright().start()
+        cls.addClassCleanup(playwright.stop)
+        cls.browser = playwright.chromium.launch(headless=True)
+        cls.addClassCleanup(cls.browser.close)
+
+    def test_mock_dry_run_fills_answers_and_resume(self):
+        with tempfile.TemporaryDirectory() as folder:
+            resume = Path(folder) / 'sample.txt'
+            resume.write_text('Synthetic resume', encoding='utf-8')
+            cfg = {**CFG, 'profile': {**CFG['profile'], 'resume_path': str(resume)}}
+            page = self.browser.new_page()
+            try:
+                page.goto(FIXTURE.resolve().as_uri())
+                outcome, details = apply_to_page(page, cfg)
+                self.assertEqual(outcome, 'prepared', details)
+                self.assertEqual(page.locator('#first').input_value(), 'Test')
+                self.assertEqual(page.locator('#auth').input_value(), 'Yes')
+                self.assertEqual(page.locator('#resume').evaluate('e => e.files[0].name'), 'sample.txt')
+                self.assertEqual(page.locator('form').count(), 1)
+                self.assertNotIn('test@example.invalid', details)
+                self.assertNotIn('sample.txt', details)
+            finally:
+                page.close()
+
+    def test_detached_snapshot_disables_site_scripts_and_network(self):
+        snapshot = FIXTURE.read_text(encoding='utf-8').replace('type="file" required', 'type="file"')
+        snapshot += """
+          <script>document.querySelector('form').remove()</script>
+          <iframe src="https://example.invalid/probe"></iframe>
+        """
+        from agent import browser
+
+        original = browser.apply_to_page
+
+        def check_offline(page, cfg):
+            self.assertEqual(page.locator('form').count(), 1)
+            self.assertEqual(page.frames[1].url, 'chrome-error://chromewebdata/')
+            return original(page, cfg)
+
+        with patch.object(browser, 'apply_to_page', side_effect=check_offline):
+            outcome, details = preview_snapshot(self.browser, snapshot, CFG)
+        self.assertEqual(outcome, 'prepared', details)
+
+    def test_missing_verified_answer_and_resume_need_review(self):
+        outcome, details = preview_snapshot(self.browser, FIXTURE.read_text(encoding='utf-8'),
+                                            {**CFG, 'verified_answers': {}})
+        self.assertEqual(outcome, 'needs_review')
+        reasons = {item['reason'] for item in json.loads(details)['unresolved']}
+        self.assertIn('no verified answer', reasons)
+        self.assertIn('resume file missing or unsupported', reasons)
+
+    def test_live_is_blocked_even_when_config_enabled(self):
+        cfg = {**CFG, 'automation': {'allow_live_submit': True}}
+        self.assertEqual(apply_to_page(None, cfg, live=True)[0], 'needs_review')

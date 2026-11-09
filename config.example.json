@@ -1,0 +1,76 @@
+{
+  "profile": {
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "phone": "",
+    "city": "",
+    "state": "",
+    "school": "",
+    "degree": "",
+    "major": "",
+    "graduation": "",
+    "resume_path": "",
+    "linkedin": "",
+    "github": "",
+    "portfolio": ""
+  },
+  "verified_answers": {
+    "work_authorized_us": null,
+    "needs_sponsorship_now_or_future": null,
+    "over_18": null,
+    "willing_to_relocate": null,
+    "requires_drivers_license": null
+  },
+  "discovery": {
+    "greenhouse_boards": [
+      "canonical",
+      "duolingo",
+      "cloudflare",
+      "affirm"
+    ],
+    "lever_sites": [
+      "zoox"
+    ],
+    "max_per_source": 500
+  },
+  "preferences": {
+    "minimum_score": 20,
+    "keywords": [
+      "software engineer",
+      "developer",
+      "help desk",
+      "it support",
+      "application support",
+      "systems analyst",
+      "data analyst",
+      "business analyst",
+      "qa",
+      "quality assurance",
+      "implementation",
+      "clinical systems",
+      "healthcare it",
+      "technical support",
+      "intern",
+      "co-op",
+      "information technology",
+      "technology analyst"
+    ],
+    "locations": [
+      "charlotte",
+      "north carolina",
+      "remote",
+      "home based - americas",
+      "home based - worldwide"
+    ],
+    "exclude_contract": true,
+    "exclude_senior": true,
+    "exclude_hard_gpa_over": null,
+    "max_applications_per_run": 10
+  },
+  "automation": {
+    "headless": true,
+    "allow_live_submit": false
+  },
+  "verified_questions": {}
+}

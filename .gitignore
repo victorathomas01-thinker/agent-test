@@ -1,0 +1,13 @@
+/config.json
+/config.*.local.json
+/agent.sqlite3*
+/screenshots/
+/private/
+/.env*
+/.idea/
+/.venv/
+__pycache__/
+*.pdf
+*.docx
+*.doc
+*.rtf
