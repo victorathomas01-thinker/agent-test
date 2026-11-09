@@ -52,9 +52,11 @@ Attended submission is off by default. To enable it, explicitly set `automation.
 
 The agent records a browser receipt when it observes a successful same-host form POST and a matching acknowledgment. Greenhouse can identify the listing through its exact job-specific confirmation URL. Other pages must identify the employer and role in the acknowledgment. An ambiguous result leaves the listing on hold. After checking the employer, use `receipt` to record a saved confirmation or `release-submit JOB_ID` after closing the browser and verifying that nothing was submitted.
 
+For a multi-step form, click **Next** in Edge yourself. After the next step appears, type `next` at the terminal prompt to reuse the approved prefill options. The agent only prepares a single recognizable form within the approved posting. The terminal lists blank required fields, browser validation errors, and custom choices to review. After you submit in Edge, press Enter to check for the receipt.
+
 ### Saved dropdown choices
 
-`--prefill-verified` supports verified work authorization and sponsorship answers as well as explicitly saved gender and pronoun choices. To save a personal choice, use `main.py remember "Pronouns" "Prefer not to answer"` with the exact question label and the option you want. The example is a command format. No personal answers are set by default. The agent uses a unique matching option on a supported single-choice dropdown and leaves consent questions, existing choices, and unmatched fields for you.
+`--prefill-verified` supports verified work authorization and sponsorship answers as well as explicitly saved gender and pronoun choices. To save a personal choice, use `main.py remember "Pronouns" "Prefer not to answer"` with the exact question label and the option you want. The example is a command format. No personal answers are set by default. The agent uses a unique matching option on a supported single-choice dropdown. Common equivalent pronoun labels such as He/Him and He/Him/His count as a match when there is only one eligible option. Consent questions, existing choices, and unmatched fields stay for review.
 
 ## Sign-in profiles
 

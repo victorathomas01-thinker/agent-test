@@ -22,6 +22,9 @@ PERSONAL_DROPDOWNS = {
                'what is your gender identity', 'how do you identify? (gender identity)'},
     'pronouns': {'pronouns', 'preferred pronouns', 'what are your pronouns', 'what pronouns do you use'},
 }
+PRONOUN_LABELS = (
+    {'he/him', 'he/him/his'}, {'she/her', 'she/her/hers'}, {'they/them', 'they/them/theirs'},
+)
 
 
 def official_job_url(job):
@@ -90,8 +93,26 @@ def greenhouse_confirmation(page, job, initial_url):
     )
 
 
-def contact_form(page, job):
+def allowed_step(job, url):
+    if not official_job_url(job):
+        return False
+    expected, current = urlsplit(job['url']), urlsplit(url)
+    if (current.scheme, current.netloc) != (expected.scheme, expected.netloc):
+        return False
+    root = expected.path.rstrip('/').removesuffix('/apply')
+    path = current.path.rstrip('/')
+    if path in {root, root + '/apply', root + '/application'}:
+        return True
+    return bool(re.fullmatch(re.escape(root) + r'/(?:apply/|application/)?steps?/[a-zA-Z0-9_-]+', path))
+
+
+def contact_form(page, job, later_step=False):
     original_url = page.url
+    if not allowed_step(job, original_url):
+        return None
+    if later_step:
+        forms = page.locator('form:visible, [role=form]:visible')
+        return forms.first if forms.count() == 1 else None
     if not official_job_url({**dict(job), 'url': original_url}):
         return None
     if find_form_frame(page) is not page.main_frame or page.url != original_url:
@@ -102,11 +123,11 @@ def contact_form(page, job):
     return forms.first if forms.count() == 1 else None
 
 
-def prefill_contact(page, job, cfg):
+def prefill_contact(page, job, cfg, later_step=False):
     from playwright.sync_api import Error as PlaywrightError
 
     original_url = page.url
-    form = contact_form(page, job)
+    form = contact_form(page, job, later_step)
     if form is None:
         return []
     candidates = []
@@ -119,7 +140,7 @@ def prefill_contact(page, job, cfg):
             candidates.append((field['index'], key, answer))
 
     keys = Counter(key for _, key, _ in candidates)
-    if not {'first_name', 'full_name'}.intersection(keys) or keys['email'] != 1:
+    if not later_step and (not {'first_name', 'full_name'}.intersection(keys) or keys['email'] != 1):
         return []
     # Pin elements before filling so a re-render cannot shift an index to another input.
     inputs = [(form.locator(FIELDS).nth(index).element_handle(timeout=1500), key, answer)
@@ -137,11 +158,11 @@ def prefill_contact(page, job, cfg):
     return filled
 
 
-def attach_reviewed_resume(page, job, path):
+def attach_reviewed_resume(page, job, path, later_step=False):
     from playwright.sync_api import Error as PlaywrightError
 
     original_url = page.url
-    form = contact_form(page, job)
+    form = contact_form(page, job, later_step)
     if form is None:
         return False
     fields = [field for field in field_metadata(form)
@@ -163,11 +184,11 @@ def attach_reviewed_resume(page, job, path):
         return False
 
 
-def prefill_verified_fields(page, job, cfg):
+def prefill_verified_fields(page, job, cfg, later_step=False):
     from playwright.sync_api import Error as PlaywrightError
 
     original_url = page.url
-    form = contact_form(page, job)
+    form = contact_form(page, job, later_step)
     if form is None:
         return []
     verified_cfg = {'profile': {}, 'verified_answers': cfg['verified_answers']}
@@ -195,43 +216,90 @@ def prefill_verified_fields(page, job, cfg):
         if page.url != original_url:
             break
         try:
+            labels = {answer.casefold()}
+            if key == 'pronouns':
+                labels = next((group for group in PRONOUN_LABELS if answer.casefold() in group), labels)
             if field['type'] == 'select-one' and not node.input_value():
                 options = [option for option in field['options'] if option['value']
-                           and option['text'].strip().casefold() == answer.casefold()]
+                           and option['text'].strip().casefold() in labels]
                 if len(options) == 1:
                     node.select_option(label=options[0]['text'], timeout=1500)
                     filled.append(key)
             elif field['type'] == 'custom' and field['role'] == 'combobox':
-                if select_verified_combobox(page, node, answer, original_url):
+                if select_verified_combobox(page, node, labels, original_url):
                     filled.append(key)
         except PlaywrightError:
             continue
     return filled
 
 
-def select_verified_combobox(page, node, answer, original_url):
+def select_verified_combobox(page, node, labels, original_url):
     # Leave existing selections and non-input widgets for the applicant.
     if not node.evaluate("node => node.tagName === 'INPUT' && !node.value"):
         return False
     if node.get_attribute('aria-expanded') != 'true':
         node.click(timeout=1500)
-    control = node.get_attribute('aria-controls')
-    if not control or page.url != original_url:
+    control = page.wait_for_function(
+        "node => node.isConnected && node.getAttribute('aria-controls')",
+        arg=node, timeout=1500,
+    ).json_value()
+    if page.url != original_url:
         return False
     list_id = page.evaluate('id => CSS.escape(id)', control)
     listbox = page.locator(f'#{list_id}[role="listbox"]:visible')
     listbox.wait_for(state='visible', timeout=1500)
     if listbox.get_attribute('aria-multiselectable') == 'true':
         return False
-    options = listbox.get_by_role(
-        'option', name=re.compile(r'^' + re.escape(answer) + r'$', re.I)
-    )
+    names = '|'.join(re.escape(label).replace('/', r'\/') for label in sorted(labels))
+    options = listbox.get_by_role('option', name=re.compile(r'^(?:' + names + r')$', re.I))
     options.first.wait_for(state='visible', timeout=1500)
     if (listbox.get_by_role('option', selected=True).count() or options.count() != 1
             or not options.first.is_enabled() or page.url != original_url):
         return False
     options.first.click(timeout=1500)
     return page.url == original_url
+
+
+def print_step_review(page):
+    forms = page.locator('form:visible, [role=form]:visible')
+    if forms.count() != 1:
+        return
+    groups = {'Required and blank': [], 'Invalid entry': [], 'Check required custom choices': []}
+    for field in field_metadata(forms.first):
+        if not field['visible'] or field['disabled']:
+            continue
+        label = field['question'] or field['label'] or field['name'] or field['id']
+        label = ''.join(char for char in label if char.isprintable()).strip().rstrip('*').strip()
+        label = label or 'Unlabeled field'
+        if field['type'] == 'custom' and field['required']:
+            groups['Check required custom choices'].append(label)
+        elif field['missing'] or (field['required'] and field['blank']):
+            groups['Required and blank'].append(label)
+        elif field['invalid']:
+            groups['Invalid entry'].append(label)
+    for description, labels in groups.items():
+        if labels:
+            print(f'{description} | ' + ' | '.join(dict.fromkeys(labels)))
+
+
+def prepare_step(page, job, prefill, attachment, verified, later_step=False):
+    if prefill is not None:
+        filled = prefill_contact(page, job, prefill, later_step)
+        print('Prefilled contact fields: ' + ', '.join(filled) if filled
+              else 'Contact fields need manual entry on this form.')
+    if verified is not None:
+        filled = prefill_verified_fields(page, job, verified, later_step)
+        print('Prefilled verified answers: ' + ', '.join(filled) if filled
+              else 'Verified questions need manual entry on this form.')
+    if attachment is not None:
+        attached = attach_reviewed_resume(page, job, attachment, later_step)
+        print('Reviewed resume attached.' if attached else 'Attach your resume manually on this form.')
+        if attached:
+            attachment = None
+    if not allowed_step(job, page.url):
+        raise ValueError('The posting changed during preparation. The submission remains on hold.')
+    print_step_review(page)
+    return attachment
 
 
 def review_page(con, job, page, wait, prefill=None, attachment=None, verified=None, reuse_session=False):
@@ -243,21 +311,10 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
         raise ValueError('Sign-in needed. The submission remains on hold.')
     if response is None or not response.ok or not official_job_url({**dict(job), 'url': page.url}):
         raise ValueError('The official posting could not be opened. The submission remains on hold.')
-    if prefill is not None:
-        filled = prefill_contact(page, job, prefill)
-        print('Prefilled contact fields: ' + ', '.join(filled) if filled
-              else 'Contact fields need manual entry on this form.')
-    if verified is not None:
-        filled = prefill_verified_fields(page, job, verified)
-        print('Prefilled verified answers: ' + ', '.join(filled) if filled
-              else 'Verified questions need manual entry on this form.')
-    if attachment is not None:
-        attached = attach_reviewed_resume(page, job, attachment)
-        print('Reviewed resume attached.' if attached else 'Attach your resume manually on this form.')
-    if not official_job_url({**dict(job), 'url': page.url}):
-        raise ValueError('The posting changed during preparation. The submission remains on hold.')
-    initial = page.locator('body').inner_text(timeout=5000)
     initial_url = page.url
+    job = {**dict(job), 'url': initial_url}
+    attachment = prepare_step(page, job, prefill, attachment, verified)
+    initial = page.locator('body').inner_text(timeout=5000)
     origin = urlsplit(initial_url).netloc
     successful_posts = []
 
@@ -268,7 +325,22 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
             successful_posts.append(True)
 
     page.on('response', observe)
-    wait('Complete and submit the application yourself in Microsoft Edge. Press Enter here to check for a receipt. ')
+    while True:
+        choice = wait('Click Next yourself, then type next here to prepare that step. '
+                      'After submitting in Edge, press Enter here to check for a receipt. ')
+        if not choice:
+            break
+        if choice.strip().casefold() != 'next':
+            print('Type next after advancing the form, or press Enter after submitting.')
+            continue
+        if not allowed_step(job, page.url):
+            print('This page is outside the approved application steps. Review it in Edge.')
+            continue
+        if page.locator('form:visible, [role=form]:visible').count() != 1:
+            print('No single application form was found on this step. Review it in Edge.')
+            continue
+        attachment = prepare_step(page, job, prefill, attachment, verified, later_step=True)
+        successful_posts.clear()
     text = check_confirmation(page, job, initial_url, initial)
     if not successful_posts:
         return 'submission_pending'

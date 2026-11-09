@@ -42,6 +42,9 @@ def field_metadata(scope):
         visible: !!e.getClientRects().length && getComputedStyle(e).visibility === 'visible'
           && !e.closest('[aria-hidden="true"]'),
         disabled: e.matches(':disabled, [aria-disabled="true"]') || e.readOnly,
+        invalid: !!e.willValidate && !e.validity.valid,
+        missing: !!e.willValidate && e.validity.valueMissing,
+        blank: typeof e.value === 'string' && !e.value.trim(),
         options,
       };
     })""")

@@ -1,5 +1,6 @@
 import json
-from contextlib import closing
+from contextlib import closing, redirect_stdout
+from io import StringIO
 import tempfile
 import time
 import unittest
@@ -358,3 +359,63 @@ class BrowserTest(unittest.TestCase):
             self.assertEqual(page.locator('#policy').input_value(), '')
         finally:
             context.close()
+
+    def test_attended_next_step_prepares_delayed_dropdown_and_reviews_validation(self):
+        url = 'https://job-boards.greenhouse.io/example/jobs/123'
+        step = url + '/steps/details'
+        receipt = url + '/confirmation'
+        job = dict(id='greenhouse:example:123', url=url, eligible=1,
+                   title='Software Engineer', company='Example')
+        first_page = f'<form><label>Email<input type="email" value="invalid"></label><a href="{step}">Next</a></form>'
+        next_page = f"""
+            <form method="post" action="{receipt}">
+              <label for="pronouns">Pronouns</label>
+              <input id="pronouns" role="combobox" aria-expanded="false"
+                     onclick="setTimeout(() => {{ this.setAttribute('aria-controls','choices');
+                       this.setAttribute('aria-expanded','true');
+                       document.querySelector('#choices').hidden=false; }}, 50)">
+              <ul id="choices" role="listbox" hidden>
+                <li role="option" onclick="document.querySelector('#pronouns').value='He/him/his'">He/him/his</li>
+              </ul>
+              <button>Submit application</button>
+            </form>
+        """
+        with tempfile.TemporaryDirectory() as folder, patch.object(core, 'DB', Path(folder) / 'agent.sqlite3'):
+            with closing(core.connect()) as con:
+                with con:
+                    con.execute('INSERT INTO jobs(id,url,eligible,title,company) VALUES(:id,:url,:eligible,:title,:company)', job)
+                reserve_submission(con, job)
+                context = self.browser.new_context(offline=True)
+                try:
+                    def respond(route):
+                        target = (route.request.method, route.request.url)
+                        pages = {
+                            ('GET', url): first_page, ('GET', step): next_page,
+                            ('POST', receipt): '<title>Thank you for applying</title><h1>Thank you for applying</h1>',
+                        }
+                        if target in pages:
+                            route.fulfill(content_type='text/html', body=pages[target])
+                        else:
+                            route.abort()
+
+                    context.route('**/*', respond)
+                    page = context.new_page()
+
+                    def applicant(_):
+                        if page.url == url:
+                            page.get_by_role('link', name='Next').click()
+                            return 'next'
+                        self.assertEqual(page.locator('#pronouns').input_value(), 'He/him/his')
+                        page.get_by_role('button', name='Submit application').click()
+                        return ''
+
+                    cfg = {**CFG, 'verified_questions': {'pronouns': 'He/Him'}}
+                    output = StringIO()
+                    with redirect_stdout(output):
+                        outcome = review_page(con, job, page, applicant, verified=cfg)
+                    self.assertEqual(outcome, 'submitted')
+                    self.assertIn('Invalid entry | Email', output.getvalue())
+                    self.assertIn('Prefilled verified answers: pronouns', output.getvalue())
+                    self.assertNotIn('He/him/his', output.getvalue())
+                finally:
+                    context.close()
