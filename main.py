@@ -16,6 +16,10 @@ from agent.operations import run_record, track_application, write_dashboard
 from agent.packages import prepare_package
 from agent.sessions import sign_in
 from agent.submission import official_job_url, release_submission, review_submission
+from agent.dashboard import serve
+from agent.careers import discover_sites
+from agent.facts import effective_answers, revoke_fact, store_fact, sync_config_facts
+from agent.live_workbench import available_jobs, review_tabs
 
 
 def positive_integer(value):
@@ -140,6 +144,8 @@ def main():
     init.add_argument('--from-mvp', type=Path, metavar='CONFIG')
     for name in ('discover', 'status', 'answers'):
         commands.add_parser(name)
+    facts = commands.add_parser('facts', help='Inspect or revoke verified facts.')
+    facts.add_argument('--revoke')
     logs = commands.add_parser('logs')
     logs.add_argument('--limit', type=positive_integer, default=20)
     receipt = commands.add_parser('receipt', help='Record a locally saved employer confirmation.')
@@ -188,6 +194,14 @@ def main():
     explain.add_argument('job_id')
     explain.add_argument('--strategy', choices=STRATEGIES)
     commands.add_parser('dashboard', help='Generate a local review dashboard.')
+    web = commands.add_parser('discover-web', help='Discover jobs on configured public employer websites.')
+    web.add_argument('--sources', type=Path, default=core.ROOT / 'examples' / 'careers.json')
+    web.add_argument('--budget', type=positive_integer, default=10)
+    dashboard = commands.add_parser('serve', help='Open the interactive local dashboard server.')
+    dashboard.add_argument('--port', type=int, default=0)
+    tabs = commands.add_parser('review-selected', help='Open a specifically approved batch in Microsoft Edge.')
+    tabs.add_argument('--limit', type=positive_integer, default=5)
+    tabs.add_argument('--attach-master', action='store_true')
     commands.add_parser('health', help='Check the local database and master resume.')
     track = commands.add_parser('track', help='Record an outcome or follow-up for a confirmed application.')
     track.add_argument('job_id')
@@ -249,11 +263,13 @@ def main():
     cfg = core.load_config()
     if getattr(args, 'strategy', None):
         cfg['preferences']['strategy'] = args.strategy
-    if args.command in {'discover', 'run', 'list', 'batch', 'queue', 'dashboard', 'explain'}:
+    if args.command in {'discover', 'discover-web', 'run', 'list', 'batch', 'queue', 'dashboard', 'serve', 'explain'}:
+        evidence = cfg.get('_candidate_profile', {})
+        cfg['_candidate_evidence'] = ' '.join(evidence.get('skills', []) + evidence.get('projects', []))
         source = resume_file(cfg)
         if source:
             try:
-                cfg['_candidate_evidence'] = read_resume(source)
+                cfg['_candidate_evidence'] += '\n' + read_resume(source)
             except (OSError, ValueError):
                 print('Master resume could not be read for ranking. Using posting-based ranking.')
     if args.command == 'set':
@@ -268,6 +284,9 @@ def main():
         else:
             parser.error('Unknown profile or answer key.')
         core.save_config(cfg)
+        if args.key in cfg['verified_answers']:
+            with closing(core.connect()) as con, con:
+                store_fact(con, args.key, cfg['verified_answers'][args.key], 'applicant confirmation')
         print(f'Saved {args.key}.')
         return
     if args.command == 'remember':
@@ -279,8 +298,23 @@ def main():
         else:
             cfg['verified_questions'].pop(question, None)
         core.save_config(cfg)
+        with closing(core.connect()) as con, con:
+            store_fact(con, 'question:' + question, args.answer.strip() or None, 'applicant confirmation')
         print('Verified question memory updated.')
         return
+    if args.command == 'facts':
+        sync_config_facts(cfg)
+        with closing(core.connect()) as con, con:
+            if args.revoke:
+                if not revoke_fact(con, args.revoke):
+                    parser.error('No active fact with that key.')
+                print('Fact revoked.')
+            else:
+                for row in con.execute('SELECT * FROM verified_facts ORDER BY key'):
+                    status = row['value'] if row['active'] else 'revoked'
+                    print(f'{row["key"]} | {status} | {row["scope"]} | {row["source"]} | {row["verified_at"]}')
+        return
+    cfg = effective_answers(cfg)
     if args.command == 'answers':
         for key, value in cfg['verified_answers'].items():
             print(f'{key} | {value if value is not None else "NOT SET"}')
@@ -288,6 +322,40 @@ def main():
         return
     if args.command == 'discover':
         discover_jobs(cfg)
+        return
+    if args.command == 'discover-web':
+        seeds = json.loads(args.sources.read_text(encoding='utf-8-sig'))
+        jobs, errors = discover_sites(seeds, min(args.budget, 100), core.plain)
+        new = core.store_jobs(jobs, cfg)
+        print(f'Employer site discovery | {len(jobs)} listings | {new} new')
+        for error in errors:
+            print(f'SOURCE ERROR {error}')
+        if errors and not jobs:
+            raise SystemExit(1)
+        return
+    if args.command == 'serve':
+        if not 0 <= args.port <= 65535:
+            parser.error('Port must be between 0 and 65535.')
+        with closing(core.connect()) as con:
+            core.refresh_eligibility(con, cfg)
+        serve(cfg, args.port)
+        return
+    if args.command == 'review-selected':
+        if cfg['automation'].get('allow_live_submit') is not True or not sys.stdin.isatty():
+            parser.error('Enable attended mode locally and use an interactive terminal.')
+        with closing(core.connect()) as con:
+            core.refresh_eligibility(con, cfg)
+            jobs = available_jobs(con, min(args.limit, 10))
+        if not jobs:
+            parser.error('Prepare selected supported listings offline first.')
+        for job in jobs:
+            print(f'{job["title"]} | {job["company"]} | {job["url"]}')
+        print('Edge will enter your saved contact and verified answers on these employer pages.')
+        if args.attach_master:
+            print('The approved package master resume may upload before you click Submit.')
+        if input('Type PREPARE to approve exactly these postings: ') != 'PREPARE':
+            parser.error('Batch approval was not entered.')
+        review_tabs(jobs, cfg, args.attach_master)
         return
     if args.command in {'batch', 'run'}:
         maximum = positive_integer(cfg['preferences']['max_applications_per_run'])
