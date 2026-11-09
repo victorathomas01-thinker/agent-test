@@ -17,6 +17,8 @@
     "portfolio": ""
   },
   "verified_answers": {
+    "has_employment_history": null,
+    "was_referred": null,
     "work_authorized_us": null,
     "needs_sponsorship_now_or_future": null,
     "over_18": null,
@@ -76,6 +78,7 @@
     "max_previews_per_day": 5
   },
   "automation": {
+    "prefill_job_board_source": false,
     "headless": true,
     "allow_live_submit": false
   },

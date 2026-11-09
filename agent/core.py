@@ -314,6 +314,17 @@ VERIFIED_PATTERNS = {
     'needs_sponsorship_now_or_future': r'(?:do|will) you (?:now or in the future )?(?:require|need) (?:visa |employment )?sponsorship(?: now or in the future)?',
     'over_18': r'are you (?:at least 18(?: years old| years of age)?|18 years of age or older)',
     'willing_to_relocate': r'are you willing to relocate',
+    'has_employment_history': (
+        r'(?:have you (?:ever |previously )?(?:been employed|worked here(?: before)?)'
+        r'|have you (?:ever |previously )?(?:worked for|worked at|been employed by|been employed at) '
+        r'(?:us|this company|[a-z0-9 .&’\x27-]+)(?: before| for any length of time)?'
+        r'|are you (?:a )?(?:current or former|former or current) employee(?: of [a-z0-9 .&’\x27-]+)?)'
+    ),
+    'was_referred': (
+        r'(?:(?:were|have) you (?:been )?referred(?: to (?:this (?:job|role|position)|us))?'
+        r'(?: by (?:an? )?(?:employee|current employee|someone)(?: of [a-z0-9 .&’\x27-]+)?)?'
+        r'|did someone refer you)'
+    ),
 }
 NARROW_US_SPONSORSHIP = re.compile(
     r"(?:do you require immigration sponsorship to work for [a-z0-9 .&'\-]+ in the united states"
@@ -338,6 +349,8 @@ def answer_for(label, cfg):
     for key, pattern in VERIFIED_PATTERNS.items():
         if re.fullmatch(pattern, normalized):
             value = cfg['verified_answers'].get(key)
+            if key in {'has_employment_history', 'was_referred'} and value is not False:
+                return None, key
             return ('Yes' if value else 'No', key) if isinstance(value, bool) else (None, key)
     profile = cfg['profile']
     for key, aliases in PROFILE_LABELS.items():

@@ -58,6 +58,8 @@ For a multi-step form, click **Next** in Edge yourself. After the next step appe
 
 `--prefill-verified` supports verified work authorization and sponsorship answers as well as explicitly saved gender, pronouns, race, ethnicity, and residence answers. To save a personal choice, use `main.py remember "Pronouns" "Prefer not to answer"` with the exact question label and the option you want. The example is a command format. No personal answers are set by default. The agent uses a unique matching option on a supported single-choice dropdown. A combined race and ethnicity option requires both facts to be confirmed. Consent questions, existing choices, and unmatched fields stay for review.
 
+The agent can reuse a confirmed absence of employment history or referrals for equivalent questions. Set `automation.prefill_job_board_source` in the local config to use the known posting source or a generic job-board option on recognized source questions.
+
 ## Sign-in profiles
 
 Run `main.py sign-in indeed` in an interactive terminal to open Indeed in a dedicated browser profile. An optional `--job-key` opens a specific listing. Sign in and complete verification in Microsoft Edge, then press Enter in the terminal to close the profile cleanly. Reopening the profile can reuse sessions that Indeed keeps valid. This command opens the listing for manual use.

@@ -337,11 +337,15 @@ class BrowserTest(unittest.TestCase):
             'pronouns': 'Pronouns',
             'race': 'Please indicate your race or ethnicity',
             'ethnicity': 'Are you Hispanic/Latino?',
+            'employment': 'Have you previously been employed at Example for any length of time?',
+            'referral': 'Were you referred by an employee?',
+            'source': 'How did you first learn about Example as an employer?',
             'policy': 'Do you accept our privacy policy?',
         }
         choices = ('<option value="">Choose</option><option value="value-1">No</option>'
                    '<option value="value-2">Prefer not to answer</option>'
-                   '<option value="value-3">Black or African American (Not Hispanic or Latino)</option>')
+                   '<option value="value-3">Black or African American (Not Hispanic or Latino)</option>'
+                   '<option value="value-4">Company Website</option><option value="value-5">Job Board</option>')
         markup = '<form><label>Email<input name="email"></label>' + ''.join(
             f'<label for="{key}">{question}</label><select id="{key}">{choices}</select>'
             for key, question in questions.items()
@@ -351,19 +355,25 @@ class BrowserTest(unittest.TestCase):
             context.route(url, lambda route: route.fulfill(content_type='text/html', body=markup))
             page = context.new_page()
             page.goto(url)
-            cfg = {**CFG, 'verified_answers': {'needs_sponsorship_now_or_future': False},
+            cfg = {**CFG, 'verified_answers': {'needs_sponsorship_now_or_future': False,
+                                              'has_employment_history': False, 'was_referred': False},
+                   'automation': {'prefill_job_board_source': True},
                    'verified_questions': {'pronouns': 'Prefer not to answer',
                                           'please indicate your race or ethnicity': 'Black',
                                           'are you hispanic/latino': 'No',
                                           'do you accept our privacy policy': 'No'}}
             self.assertEqual(prefill_verified_fields(page, job, cfg),
                              ['needs_sponsorship_now_or_future', 'needs_sponsorship_now_or_future',
-                              'pronouns', 'race', 'hispanic_latino'])
+                              'pronouns', 'race', 'hispanic_latino', 'has_employment_history',
+                              'was_referred', 'application_source'])
             self.assertEqual(page.locator('#now').input_value(), 'value-1')
             self.assertEqual(page.locator('#later').input_value(), 'value-1')
             self.assertEqual(page.locator('#pronouns').input_value(), 'value-2')
             self.assertEqual(page.locator('#race').input_value(), 'value-3')
             self.assertEqual(page.locator('#ethnicity').input_value(), 'value-1')
+            self.assertEqual(page.locator('#employment').input_value(), 'value-1')
+            self.assertEqual(page.locator('#referral').input_value(), 'value-1')
+            self.assertEqual(page.locator('#source').input_value(), 'value-5')
             self.assertEqual(page.locator('#gender').input_value(), '')
             self.assertEqual(page.locator('#policy').input_value(), '')
         finally:

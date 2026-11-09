@@ -16,7 +16,15 @@ CONTACT_FIELDS = {
     'email': {'text', 'email'}, 'phone': {'text', 'tel'},
     'linkedin': {'text', 'url'}, 'github': {'text', 'url'}, 'portfolio': {'text', 'url'},
 }
-VERIFIED_FIELDS = {'work_authorized_us', 'needs_sponsorship_now_or_future', 'over_18', 'willing_to_relocate'}
+VERIFIED_FIELDS = {'work_authorized_us', 'needs_sponsorship_now_or_future', 'over_18', 'willing_to_relocate',
+                   'has_employment_history', 'was_referred'}
+SOURCE_QUESTION = re.compile(
+    r'(?:(?:how|where) did you (?:first )?(?:hear|learn|find out) about '
+    r'(?:us|this (?:job|role|position|opening|opportunity)|[a-z0-9 .&’\x27-]+ as an employer)'
+    r'|(?:how|where) did you find this (?:job|role|position|opening|opportunity))'
+)
+SOURCE_LABELS = ('job board', 'online job board', 'job posting site', 'company careers site',
+                 'company career site', 'company website', 'careers website')
 PERSONAL_DROPDOWNS = {
     'gender': {'gender', 'gender identity', 'which gender do you identify as',
                'what is your gender identity', 'how do you identify? (gender identity)'},
@@ -32,6 +40,9 @@ DROPDOWN_EQUIVALENTS = {
     'pronouns': ({'he/him', 'he/him/his'}, {'she/her', 'she/her/hers'}, {'they/them', 'they/them/theirs'}),
     'race': ({'black', 'black or african american', 'black / african american', 'black/african american'},),
     'hispanic_latino': ({'no', 'not hispanic or latino', 'no, not hispanic or latino'},),
+    'was_referred': ({'no', 'not referred', 'no employee referral'},),
+    'residence_state': ({'north carolina', 'nc'},),
+    'residence_country': ({'united states', 'united states of america', 'usa', 'u.s.'},),
 }
 
 
@@ -216,6 +227,8 @@ def prefill_verified_fields(page, job, cfg, later_step=False):
         else:
             key = next((name for name, labels in PERSONAL_DROPDOWNS.items() if question in labels), None)
             answer = remembered.get(question) if key else None
+            if key is None and cfg.get('automation', {}).get('prefill_job_board_source') is True and SOURCE_QUESTION.fullmatch(question):
+                key, answer = 'application_source', 'Job board'
         if isinstance(answer, str) and answer.strip():
             candidates.append((field, question, key, answer.strip()))
     questions = Counter(question for _, question, _, _ in candidates)
@@ -228,23 +241,30 @@ def prefill_verified_fields(page, job, cfg, later_step=False):
         try:
             label = answer.casefold()
             labels = next((set(group) for group in DROPDOWN_EQUIVALENTS.get(key, ()) if label in group), {label})
+            priority = ()
+            if key == 'application_source':
+                priority = (job['id'].split(':', 1)[0], *SOURCE_LABELS)
+                labels = set(priority)
             if key == 'race' and 'black' in labels and hispanic_answers == {'no'}:
                 labels.add('black or african american (not hispanic or latino)')
             if field['type'] == 'select-one' and not node.input_value():
                 options = [option for option in field['options'] if option['value']
                            and option['text'].strip().casefold() in labels]
+                if priority and options:
+                    best = min(priority.index(option['text'].strip().casefold()) for option in options)
+                    options = [option for option in options if option['text'].strip().casefold() == priority[best]]
                 if len(options) == 1:
                     node.select_option(label=options[0]['text'], timeout=1500)
                     filled.append(key)
             elif field['type'] == 'custom' and field['role'] == 'combobox':
-                if select_verified_combobox(page, node, labels, original_url):
+                if select_verified_combobox(page, node, labels, original_url, priority):
                     filled.append(key)
         except PlaywrightError:
             continue
     return filled
 
 
-def select_verified_combobox(page, node, labels, original_url):
+def select_verified_combobox(page, node, labels, original_url, priority=()):
     # Leave existing selections and non-input widgets for the applicant.
     if not node.evaluate("node => node.tagName === 'INPUT' && !node.value"):
         return False
@@ -264,6 +284,12 @@ def select_verified_combobox(page, node, labels, original_url):
     names = '|'.join(re.escape(label).replace('/', r'\/') for label in sorted(labels))
     options = listbox.get_by_role('option', name=re.compile(r'^(?:' + names + r')$', re.I))
     options.first.wait_for(state='visible', timeout=1500)
+    if priority and options.count() > 1:
+        for label in priority:
+            preferred = listbox.get_by_role('option', name=re.compile(r'^' + re.escape(label) + r'$', re.I))
+            if preferred.count():
+                options = preferred
+                break
     if (listbox.get_by_role('option', selected=True).count() or options.count() != 1
             or not options.first.is_enabled() or page.url != original_url):
         return False
