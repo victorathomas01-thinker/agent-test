@@ -33,3 +33,9 @@ Employer board leads come from [Summer 2027 Internships](https://github.com/Simp
 Use `main.py run` as the entry point for a local scheduled job. It refreshes discovery, previews eligible unprocessed jobs seen in that refresh in a headless browser, and prints a summary. Use `main.py logs` to review attempts.
 
 `run` and `batch` share a default quota of five preview attempts per calendar day on the machine running the agent. Change `max_previews_per_day` in the ignored local config to adjust it. An interrupted or failed attempt uses a slot for that day. A deliberate single-job `apply` preview is separate from the batch quota. All of these commands are dry-run only.
+
+## Record an employer receipt
+
+After submitting an application yourself, save the employer's confirmation page or email text as a UTF-8 file in the ignored `private` folder. Run `main.py receipt JOB_ID private/confirmation.txt`. The text must contain an explicit receipt message and the listing's employer and title. Some generic receipts omit those details and need to be tracked manually. Use only confirmation text from a source you recognize. The agent checks the text locally and cannot authenticate its origin.
+
+A matching receipt marks the listing `submitted` and removes it from future preview batches. The database stores a fingerprint and the recording time. The receipt contents stay in your file. Reusing the same receipt for another listing is blocked.

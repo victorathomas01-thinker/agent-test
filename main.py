@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agent import core
 from agent.browser import resume_file, run_browser
+from agent.receipts import record_receipt
 from agent.resume import write_preview
 
 
@@ -60,6 +61,9 @@ def main():
         commands.add_parser(name)
     logs = commands.add_parser('logs')
     logs.add_argument('--limit', type=positive_integer, default=20)
+    receipt = commands.add_parser('receipt', help='Record a locally saved employer confirmation.')
+    receipt.add_argument('job_id')
+    receipt.add_argument('confirmation', type=Path, help='UTF-8 text copied from the employer confirmation.')
     setting = commands.add_parser('set')
     setting.add_argument('key')
     setting.add_argument('value')
@@ -152,6 +156,14 @@ def main():
         return
 
     with closing(core.connect()) as con:
+        if args.command == 'receipt':
+            try:
+                confirmation = args.confirmation.read_text(encoding='utf-8-sig')
+                created = record_receipt(con, args.job_id, confirmation)
+            except (OSError, ValueError) as error:
+                parser.error(str(error))
+            print('Employer receipt recorded.' if created else 'This receipt is already recorded.')
+            return
         if args.command == 'tailor':
             job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
             if job is None:

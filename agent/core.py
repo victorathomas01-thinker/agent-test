@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import csv, hashlib, html, json, re, sqlite3, urllib.request, urllib.parse
+from contextlib import closing
 from tempfile import NamedTemporaryFile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -43,6 +44,8 @@ def connect():
        at TEXT, outcome TEXT, details TEXT)''')
     con.execute('''CREATE TABLE IF NOT EXISTS preview_claims (
        day TEXT NOT NULL, job_id TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (day, job_id))''')
+    con.execute('''CREATE TABLE IF NOT EXISTS receipts (
+       job_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, recorded_at TEXT NOT NULL)''')
     con.commit()
     return con
 
@@ -275,11 +278,19 @@ def refresh_eligibility(con, cfg):
         con.executemany('UPDATE jobs SET score=?, eligible=?, reason=? WHERE id=?', updates)
 
 
-def add_attempt(job_id,outcome,details):
-    con=connect();con.execute('INSERT INTO attempts(job_id,at,outcome,details) VALUES (?,?,?,?)',(job_id,utc_now(),outcome,details))
-    status={'submitted':'submitted','needs_review':'needs_review','prepared':'prepared','failed':'failed'}.get(outcome,outcome)
-    con.execute('UPDATE jobs SET status=?, notes=?, submitted_at=CASE WHEN ?="submitted" THEN ? ELSE submitted_at END WHERE id=? AND status != ?',
-                (status,details,status,utc_now(),job_id,'submitted'));con.commit();con.close()
+def record_attempt(con, job_id, outcome, details):
+    now = utc_now()
+    con.execute('INSERT INTO attempts(job_id, at, outcome, details) VALUES (?, ?, ?, ?)',
+                (job_id, now, outcome, details))
+    con.execute("""UPDATE jobs SET status=?, notes=?,
+                   submitted_at=CASE WHEN ?='submitted' THEN ? ELSE submitted_at END
+                   WHERE id=? AND status!='submitted'""",
+                (outcome, details, outcome, now, job_id))
+
+
+def add_attempt(job_id, outcome, details):
+    with closing(connect()) as con, con:
+        record_attempt(con, job_id, outcome, details)
 
 PROFILE_LABELS = {
     'first_name': ('first name', 'firstname', 'given name', 'legal first name'),
