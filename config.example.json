@@ -26,6 +26,8 @@
     "requires_drivers_license": null
   },
   "discovery": {
+    "ashby_boards": ["ramp"],
+    "smartrecruiters_companies": ["BoschGroup"],
     "greenhouse_boards": [
       "canonical",
       "duolingo",
@@ -43,6 +45,8 @@
     "max_discovered_boards": 25
   },
   "preferences": {
+    "strategy": "fit",
+    "include_adjacent_roles": true,
     "minimum_score": 20,
     "keywords": [
       "software engineer",

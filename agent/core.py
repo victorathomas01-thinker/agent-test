@@ -1,11 +1,16 @@
 from concurrent.futures import ThreadPoolExecutor
 import csv, hashlib, html, json, re, sqlite3, urllib.request, urllib.parse
+from ipaddress import ip_address
+from urllib.error import HTTPError, URLError
+from time import sleep
 from contextlib import closing
 from tempfile import NamedTemporaryFile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .employers import board_from_url, find_boards
+from .matching import ADJACENT_ROLES, fit_signals, qualifications
+from .sources import smartrecruiters_jobs
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'agent.sqlite3'
@@ -46,6 +51,16 @@ def connect():
        day TEXT NOT NULL, job_id TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (day, job_id))''')
     con.execute('''CREATE TABLE IF NOT EXISTS receipts (
        job_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, recorded_at TEXT NOT NULL)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS job_details (
+       job_id TEXT PRIMARY KEY, published_at TEXT, workplace TEXT, employment_type TEXT, salary TEXT)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS runs (
+       id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL,
+       details TEXT NOT NULL DEFAULT '')''')
+    con.execute('''CREATE TABLE IF NOT EXISTS packages (
+       job_id TEXT NOT NULL, version TEXT NOT NULL, created_at TEXT NOT NULL,
+       folder TEXT NOT NULL, PRIMARY KEY (job_id, version))''')
+    con.execute('''CREATE TABLE IF NOT EXISTS followups (
+       job_id TEXT PRIMARY KEY, due_on TEXT NOT NULL)''')
     con.commit()
     return con
 
@@ -77,44 +92,83 @@ def claim_preview(con, daily_limit, fresh_since=None):
 
 def http_json(url):
     req=urllib.request.Request(url,headers={'User-Agent':'PersonalJobAgent/0.1 (personal job discovery)', 'Accept':'application/json'})
-    with urllib.request.urlopen(req,timeout=18) as r:
-        return json.load(r)
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(req,timeout=18) as response:
+                return json.load(response)
+        except HTTPError as error:
+            if attempt or error.code not in {429, 500, 502, 503, 504}:
+                raise
+            wait = error.headers.get('Retry-After', '')
+            if wait and (not wait.isdigit() or int(wait) > 10):
+                raise
+            sleep(max(1, int(wait)) if wait else 1)
+        except (TimeoutError, URLError):
+            if attempt:
+                raise
+            sleep(1)
 
 def plain(s):
     s = re.sub(r'<[^>]+>', ' ', html.unescape(s or ''))
     return re.sub(r'\s+', ' ', s).strip()
 
-def fetch_board(provider, slug, company, maximum, discovered=False):
+def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None):
+    if provider == 'smartrecruiters':
+        return list(smartrecruiters_jobs(slug, company, maximum, http_json, plain))
     token = urllib.parse.quote(slug, safe='')
     if provider == 'greenhouse':
         data = http_json(f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true')
         postings = data['jobs']
-    else:
+    elif provider == 'lever':
         postings = http_json(f'https://api.lever.co/v0/postings/{token}?mode=json')
+    elif provider == 'ashby':
+        postings = http_json(f'https://api.ashbyhq.com/posting-api/job-board/{token}?includeCompensation=true')['jobs']
+    else:
+        raise ValueError('Unknown posting provider.')
 
     jobs = []
+    complete = len(postings) <= maximum
     for posting in postings[:maximum]:
+        details = {}
         if provider == 'greenhouse':
             title = posting.get('title', '')
             location = (posting.get('location') or {}).get('name', '')
             url = posting.get('absolute_url', '')
             description = posting.get('content', '')
-        else:
+        elif provider == 'lever':
             title = posting.get('text', '')
             location = lever_location(posting)
             url = posting.get('applyUrl') or posting.get('hostedUrl', '')
             description = posting.get('descriptionPlain') or posting.get('description')
-        if discovered and board_from_url(url) != (provider, slug):
+            details = {'workplace': posting.get('workplaceType'), 'salary': posting.get('salaryDescriptionPlain'),
+                       'employment_type': (posting.get('categories') or {}).get('commitment')}
+        else:
+            if posting.get('isListed') is not True:
+                continue
+            title = posting.get('title')
+            location = posting.get('location')
+            url = posting.get('applyUrl') or posting.get('jobUrl')
+            description = posting.get('descriptionPlain') or posting.get('descriptionHtml')
+            details = {'published_at': posting.get('publishedAt'), 'workplace': posting.get('workplaceType'),
+                       'employment_type': posting.get('employmentType'),
+                       'salary': (posting.get('compensation') or {}).get('scrapeableCompensationSalarySummary')}
+        if (discovered or provider == 'ashby') and board_from_url(url) != (provider, slug.lower()):
+            complete = False
             continue
+        identifier = (urllib.parse.urlsplit(url).path.rstrip('/').removesuffix('/application').rsplit('/', 1)[-1]
+                      if provider == 'ashby' else posting['id'])
         jobs.append({
-            'id': f'{provider}:{slug}:{posting["id"]}',
+            'id': f'{provider}:{slug}:{identifier}',
             'source': provider,
             'company': company,
             'title': title or '',
             'location': location or '',
             'url': url or '',
             'description': plain(description),
+            **{key: value or '' for key, value in details.items()},
         })
+    if coverage is not None and complete:
+        coverage.append((provider, slug))
     return jobs
 
 
@@ -135,12 +189,16 @@ def discovery_rank(listing, cfg):
     return max(map(match, locations or ['']))
 
 
-def discover(cfg):
+def discover(cfg, coverage=None):
     discovery = cfg['discovery']
     configured = [
         ('greenhouse', slug, slug) for slug in discovery['greenhouse_boards']
     ] + [
         ('lever', slug, slug) for slug in discovery['lever_sites']
+    ] + [
+        ('ashby', slug, slug) for slug in discovery.get('ashby_boards', [])
+    ] + [
+        ('smartrecruiters', slug, slug) for slug in discovery.get('smartrecruiters_companies', [])
     ]
     known = {(provider, slug.lower()) for provider, slug, _ in configured}
     found, errors = find_boards(
@@ -155,19 +213,39 @@ def discover(cfg):
 
     def fetch(source):
         provider, slug, company = source
+        completed = []
         try:
             return fetch_board(provider, slug, company, discovery['max_per_source'],
-                               (provider, slug) in discovered), None
+                               (provider, slug) in discovered, completed), None, completed
         except (OSError, ValueError, KeyError, TypeError) as error:
-            return [], f'{provider} {slug}: {error}'
+            return [], f'{provider} {slug}: {error}', []
 
     jobs = []
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for postings, error in pool.map(fetch, sources):
+        for postings, error, completed in pool.map(fetch, sources):
             jobs.extend(postings)
+            if coverage is not None:
+                coverage.extend(completed)
             if error:
                 errors.append(error)
     return jobs, errors
+
+
+def expire_unlisted(coverage, observed, started):
+    """Only reconcile boards successfully read without a posting cap."""
+    active_ids = {job['id'] for job in observed}
+    with closing(connect()) as con, con:
+        con.execute('BEGIN IMMEDIATE')
+        missing = []
+        for provider, slug in set(coverage):
+            prefix = f'{provider}:{slug}:'
+            rows = con.execute("""SELECT id FROM jobs WHERE substr(id,1,?)=? AND last_seen<?
+                                  AND status IN ('found','prepared','needs_review','failed')""",
+                               (len(prefix), prefix, started))
+            missing.extend((row['id'],) for row in rows if row['id'] not in active_ids)
+        con.executemany("""UPDATE jobs SET status='expired', notes='No longer listed on the public board.'
+                           WHERE id=?""", missing)
+        return len(missing)
 
 def lever_location(item):
     categories = item.get('categories') or {}
@@ -194,14 +272,13 @@ def preferred_location(location, preferences):
 def evaluate(job,cfg):
     title=job['title'].lower(); description=job['description'].lower(); location=job['location'].lower()
     p=cfg['preferences']; reasons=[]
-    if p['exclude_contract'] and (re.search(r'\b(contract(or)?|1099|freelance)\b',title) or re.search(r'\b(contract position|contract role|1099 position)\b',description[:1500])):
+    if p['exclude_contract'] and (job.get('employment_type', '').casefold() in {'contract', 'temporary'}
+            or re.search(r'\b(contract(or)?|1099|freelance)\b', title)
+            or re.search(r'\b(contract position|contract role|1099 position)\b', description[:1500])):
         reasons.append('Contract work')
     if p['exclude_senior'] and re.search(r'\b(senior|sr\.?|principal|staff|lead|director|manager|architect|iii|iv)\b',title):
         reasons.append('Senior-level title')
-    hard_gpa=re.search(r'(?:minimum|required|at least|of)\s*(?:cumulative\s*)?gpa\s*(?:of|:)?\s*(\d\.\d+)|gpa\s*(?:of\s*)?(\d\.\d+)\s*(?:minimum|required|or higher)',description)
-    gpa = p['exclude_hard_gpa_over']
-    if hard_gpa and (gpa is None or max(float(x) for x in hard_gpa.groups() if x) > gpa):
-        reasons.append('Review minimum GPA requirement')
+    reasons.extend(qualifications(description, cfg.get('profile', {}), p['exclude_hard_gpa_over']))
     verified = cfg.get('verified_answers', {})
     if re.search(r'\b(no (?:visa )?sponsorship|(?:cannot|unable to|will not) sponsor)\b', description) and verified.get('needs_sponsorship_now_or_future') is not False:
         reasons.append('Review sponsorship restriction')
@@ -211,6 +288,8 @@ def evaluate(job,cfg):
         reasons.append('May require completed degree — manually review')
     search_title = re.sub(r'\bsoftware engineering\b', 'software engineer', title)
     keywords = {key.lower() for key in p['keywords'] if key}
+    if p.get('include_adjacent_roles'):
+        keywords |= ADJACENT_ROLES
     fields = keywords - {'intern', 'internship', 'co-op', 'junior', 'entry level'}
     hits = {key for key in keywords
             if re.search(r'(?<!\w)' + re.escape(key) + r'(?!\w)', search_title)}
@@ -229,28 +308,68 @@ def evaluate(job,cfg):
     if score < p['minimum_score']: reasons.append('Below match threshold')
     if not valid_application_url(job.get('url', 'https://example.invalid')):
         reasons.append('Application URL missing or invalid')
-    return score, not reasons, '; '.join(reasons)
+    bonus, _ = fit_signals(job, cfg)
+    return score + bonus, not reasons, '; '.join(reasons)
 
 
 def valid_application_url(url):
     try:
         parsed = urllib.parse.urlsplit(url)
-        return parsed.scheme == 'https' and bool(parsed.hostname) and parsed.username is None
+        host = parsed.hostname or ''
+        if parsed.scheme != 'https' or '.' not in host or parsed.username is not None or parsed.port not in (None, 443):
+            return False
+        try:
+            return ip_address(host).is_global
+        except ValueError:
+            return not host.endswith(('.localhost', '.local', '.internal'))
     except ValueError:
         return False
 
-def store_jobs(jobs,cfg):
-    con=connect(); new=0
-    for job in jobs:
-        score,eligible,reason=evaluate(job,cfg)
-        found=con.execute('SELECT status FROM jobs WHERE id=?',(job['id'],)).fetchone()
-        if not found:new+=1
-        con.execute('''INSERT INTO jobs (id,source,company,title,location,url,description,score,eligible,reason,last_seen)
+def canonical_url(url):
+    if not url or not valid_application_url(url):
+        return ''
+    parsed = urllib.parse.urlsplit(url)
+    board = board_from_url(url)
+    if board:
+        path = parsed.path.rstrip('/').removesuffix('/apply').removesuffix('/application')
+        return f'{board[0]}:{path.casefold()}'
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    query = [(key, value) for key, value in query
+             if not key.casefold().startswith('utm_') and key.casefold() not in {'gclid', 'fbclid'}]
+    return urllib.parse.urlunsplit(('https', parsed.hostname, parsed.path.rstrip('/') or '/',
+                                    urllib.parse.urlencode(sorted(query)), ''))
+
+
+def store_jobs(jobs, cfg):
+    new = 0
+    with closing(connect()) as con, con:
+        con.execute('BEGIN IMMEDIATE')
+        existing = {row['id']: row['source'] for row in con.execute('SELECT id, source FROM jobs')}
+        known_urls = {canonical_url(row['url']): row['id'] for row in con.execute(
+            "SELECT id,url FROM jobs WHERE url IS NOT NULL ORDER BY (status='submitted')"
+        )}
+        for job in jobs:
+            identity = canonical_url(job['url'])
+            if identity and identity in known_urls and job['id'] not in existing:
+                if job['source'] == 'manual' or existing[known_urls[identity]] != 'manual':
+                    continue
+            score, eligible, reason = evaluate(job, cfg)
+            new += int(job['id'] not in existing)
+            con.execute('''INSERT INTO jobs (id,source,company,title,location,url,description,score,eligible,reason,last_seen)
            VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, company=excluded.company,
            location=excluded.location,url=excluded.url,description=excluded.description,score=excluded.score,
-           eligible=excluded.eligible,reason=excluded.reason,last_seen=excluded.last_seen''',
-           (job['id'],job['source'],job['company'],job['title'],job['location'],job['url'],job['description'],score,int(eligible),reason,utc_now()))
-    con.commit();con.close();return new
+           eligible=excluded.eligible,reason=excluded.reason,last_seen=excluded.last_seen,
+           status=CASE WHEN jobs.status='expired' AND excluded.source!='manual' THEN 'found' ELSE jobs.status END''',
+                        (job['id'], job['source'], job['company'], job['title'], job['location'], job['url'],
+                         job['description'], score, int(eligible), reason, utc_now()))
+            if job['source'] != 'manual':
+                con.execute('INSERT OR REPLACE INTO job_details VALUES (?, ?, ?, ?, ?)',
+                            (job['id'], *(job.get(key, '') for key in
+                             ('published_at', 'workplace', 'employment_type', 'salary'))))
+            existing[job['id']] = job['source']
+            if identity:
+                known_urls[identity] = job['id']
+    return new
 
 def import_urls(path, cfg):
     jobs = []
@@ -271,7 +390,9 @@ def import_urls(path, cfg):
 
 def refresh_eligibility(con, cfg):
     updates = []
-    for job in con.execute('SELECT * FROM jobs'):
+    for job in con.execute("""SELECT j.*, COALESCE(d.workplace, '') AS workplace,
+                                     COALESCE(d.employment_type, '') AS employment_type
+                              FROM jobs j LEFT JOIN job_details d ON j.id=d.job_id"""):
         score, eligible, reason = evaluate(dict(job), cfg)
         updates.append((score, int(eligible), reason, job['id']))
     with con:
@@ -284,7 +405,8 @@ def record_attempt(con, job_id, outcome, details):
                 (job_id, now, outcome, details))
     con.execute("""UPDATE jobs SET status=?, notes=?,
                    submitted_at=CASE WHEN ?='submitted' THEN ? ELSE submitted_at END
-                   WHERE id=? AND status!='submitted'
+                   WHERE id=? AND submitted_at IS NULL
+                     AND status NOT IN ('submitted','assessment','interview','offer','rejected','withdrawn')
                      AND (status!='submission_pending' OR ?='submitted')""",
                 (outcome, details, outcome, now, job_id, outcome))
 

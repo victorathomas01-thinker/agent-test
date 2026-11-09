@@ -25,6 +25,37 @@ CFG = {
 
 
 class BrowserTest(unittest.TestCase):
+    def test_synthetic_discovery_to_dashboard_pipeline(self):
+        import main
+        from agent.operations import run_record, write_dashboard
+
+        cfg = core.with_defaults({'profile': CFG['profile'], 'verified_answers': CFG['verified_answers']})
+        job = {'id': 'greenhouse:example:123', 'source': 'greenhouse', 'company': 'Example',
+               'title': 'Software Engineer Intern', 'location': 'Charlotte',
+               'url': 'https://job-boards.greenhouse.io/example/jobs/123', 'description': 'Python testing'}
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            resume = root / 'resume.txt'
+            resume.write_text('Synthetic Applicant\n\nSkills\nPython testing\n\nProjects\nBuilt a testing tool\n', encoding='utf-8')
+            cfg['profile']['resume_path'] = str(resume)
+
+            def mock_browser(listing, profile):
+                outcome, details = preview_snapshot(self.browser, FIXTURE.read_text(encoding='utf-8'), profile)
+                core.add_attempt(listing['id'], outcome, details)
+                return outcome, details
+
+            with (patch.object(core, 'ROOT', root), patch.object(core, 'DB', root / 'agent.sqlite3'),
+                  patch.object(core, 'discover', return_value=([job], [])),
+                  patch.object(main, 'run_browser', side_effect=mock_browser), redirect_stdout(StringIO())):
+                with run_record() as summary:
+                    main.discover_jobs(cfg, summary)
+                    main.run_batch(cfg, 1, '2000-01-01', summary)
+                with closing(core.connect()) as con:
+                    self.assertEqual(con.execute('SELECT status FROM jobs').fetchone()[0], 'prepared')
+                    self.assertEqual(con.execute('SELECT status FROM runs').fetchone()[0], 'complete')
+                    self.assertEqual(con.execute('SELECT COUNT(*) FROM packages').fetchone()[0], 1)
+                    self.assertIn('Software Engineer Intern', write_dashboard(con, cfg).read_text(encoding='utf-8'))
+
     def test_profile_persists_only_within_its_scope(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(sessions, 'ROOT', Path(folder)):
             chromium = self.playwright.chromium
