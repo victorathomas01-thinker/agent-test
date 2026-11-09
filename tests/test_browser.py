@@ -1,11 +1,14 @@
 import json
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from agent import core
 from agent.browser import apply_to_page, find_form_frame, preview_snapshot
 from agent.rehearsal import rehearse_submission
+from agent.submission import official_job_url, release_submission, reserve_submission, review_page
 
 FIXTURE = Path(__file__).with_name('mock_form.html')
 CFG = {
@@ -146,3 +149,47 @@ class BrowserTest(unittest.TestCase):
         status, detail = rehearse_submission(self.browser, config={'profile': {}, 'verified_answers': {}})
         self.assertEqual(status, 'blocked', detail)
         self.assertIn('No simulated POST', detail)
+
+    def test_attended_submission_tracks_only_confirmed_employer_response(self):
+        url = 'https://job-boards.greenhouse.io/example/jobs/123'
+        action = 'https://job-boards.greenhouse.io/mock-submit'
+        job = dict(id='greenhouse:example:123', url=url, eligible=1,
+                   title='Software Engineer', company='Example')
+        self.assertTrue(official_job_url(job))
+        self.assertFalse(official_job_url({**job, 'url': url.replace('/123', '/456')}))
+        for confirmed in (True, False):
+            with self.subTest(confirmed=confirmed), tempfile.TemporaryDirectory() as folder:
+                with patch.object(core, 'DB', Path(folder) / 'agent.sqlite3'), closing(core.connect()) as con:
+                    with con:
+                        con.execute(
+                            'INSERT INTO jobs(id,url,eligible,title,company) VALUES(:id,:url,:eligible,:title,:company)',
+                            job,
+                        )
+                    reserve_submission(con, job)
+                    with self.assertRaisesRegex(ValueError, 'unresolved submission'):
+                        reserve_submission(con, job)
+                    context = self.browser.new_context(offline=True)
+                    try:
+                        def respond(route):
+                            request = route.request
+                            if request.url == url and request.method == 'GET':
+                                route.fulfill(content_type='text/html', body=
+                                    f'<form method="post" action="{action}"><button>Submit</button></form>')
+                            elif request.url == action and request.method == 'POST':
+                                text = ('Thank you for applying to Example for the Software Engineer role.'
+                                        if confirmed else 'Your application status is unavailable.')
+                                route.fulfill(content_type='text/html', body=f'<h1>{text}</h1>')
+                            else:
+                                route.abort()
+
+                        context.route('**/*', respond)
+                        page = context.new_page()
+                        result = review_page(con, job, page, lambda _: page.get_by_role('button').click())
+                    finally:
+                        context.close()
+                    self.assertEqual(result, 'submitted' if confirmed else 'submission_pending')
+                    core.add_attempt(job['id'], 'needs_review', 'Late preview result.')
+                    self.assertEqual(con.execute('SELECT status FROM jobs').fetchone()[0], result)
+                    if not confirmed:
+                        release_submission(con, job['id'])
+                        self.assertEqual(con.execute('SELECT status FROM jobs').fetchone()[0], 'needs_review')

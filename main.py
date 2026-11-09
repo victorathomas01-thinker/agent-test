@@ -3,12 +3,14 @@ import argparse
 from contextlib import closing
 import json
 from pathlib import Path
+import sys
 
 from agent import core
 from agent.browser import resume_file, run_browser
 from agent.receipts import record_receipt
 from agent.rehearsal import run_rehearsal
 from agent.resume import write_preview
+from agent.submission import official_job_url, release_submission, review_submission
 
 
 def positive_integer(value):
@@ -54,7 +56,7 @@ def run_batch(cfg, limit, fresh_since):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Personal job application agent (dry run only)')
+    parser = argparse.ArgumentParser(description='Personal job application agent')
     commands = parser.add_subparsers(dest='command', required=True)
     init = commands.add_parser('init')
     init.add_argument('--from-mvp', type=Path, metavar='CONFIG')
@@ -66,6 +68,10 @@ def main():
     receipt.add_argument('job_id')
     receipt.add_argument('confirmation', type=Path, help='UTF-8 text copied from the employer confirmation.')
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
+    review = commands.add_parser('review-submit', help='Open one official form for attended submission.')
+    review.add_argument('job_id')
+    release = commands.add_parser('release-submit', help='Clear a hold after verifying no submission occurred.')
+    release.add_argument('job_id')
     setting = commands.add_parser('set')
     setting.add_argument('key')
     setting.add_argument('value')
@@ -165,6 +171,37 @@ def main():
         return
 
     with closing(core.connect()) as con:
+        if args.command in {'review-submit', 'release-submit'}:
+            if args.command == 'review-submit' and cfg['automation'].get('allow_live_submit') is not True:
+                parser.error('Attended submission is disabled in the local configuration.')
+            if not sys.stdin.isatty():
+                parser.error('Attended submission commands require an interactive terminal.')
+            if args.command == 'release-submit':
+                if input('Close any open application and verify that nothing was submitted. Type the job ID to release: ') != args.job_id:
+                    parser.error('Job ID did not match.')
+                try:
+                    release_submission(con, args.job_id)
+                except ValueError as error:
+                    parser.error(str(error))
+                print('Submission hold released.')
+                return
+
+            core.refresh_eligibility(con, cfg)
+            job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
+            if job is None or not job['eligible'] or not official_job_url(job):
+                parser.error('Select an eligible, direct Greenhouse or Lever listing.')
+            if job['status'] in {'submitted', 'submission_pending'}:
+                parser.error('This listing is already submitted or pending confirmation.')
+            print(f'{job["title"]} | {job["company"]} | {job["url"]}')
+            if input('Type the job ID to open this form for manual submission: ') != args.job_id:
+                parser.error('Job ID did not match.')
+            try:
+                outcome = review_submission(con, job)
+            except ValueError as error:
+                parser.error(str(error))
+            print('Employer receipt recorded.' if outcome == 'submitted' else
+                  'Submission unconfirmed. The job is on hold until you verify the result.')
+            return
         if args.command == 'receipt':
             try:
                 confirmation = args.confirmation.read_text(encoding='utf-8-sig')
@@ -214,6 +251,8 @@ def main():
                 parser.error('Job ID not found.')
             if job['status'] == 'submitted':
                 parser.error('This job was previously submitted.')
+            if job['status'] == 'submission_pending':
+                parser.error('This job has an unresolved submission. Check the employer first.')
             if not job['eligible']:
                 parser.error(job['reason'])
     if dry_run(job, cfg) == 'failed':

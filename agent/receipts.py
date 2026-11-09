@@ -37,7 +37,7 @@ def receipt_fingerprint(text, job):
     return sha256(canonical.encode()).hexdigest()
 
 
-def record_receipt(con, job_id, text):
+def record_receipt(con, job_id, text, *, details='Matched a user-provided employer receipt.'):
     with con:
         con.execute('BEGIN IMMEDIATE')
         job = con.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
@@ -57,5 +57,5 @@ def record_receipt(con, job_id, text):
         recorded_at = utc_now()
         con.execute('INSERT INTO receipts(job_id, fingerprint, recorded_at) VALUES (?, ?, ?)',
                     (job_id, fingerprint, recorded_at))
-        record_attempt(con, job_id, 'submitted', 'Matched a user-provided employer receipt.')
+        record_attempt(con, job_id, 'submitted', details)
         return True

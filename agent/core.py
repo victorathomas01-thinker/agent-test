@@ -284,8 +284,9 @@ def record_attempt(con, job_id, outcome, details):
                 (job_id, now, outcome, details))
     con.execute("""UPDATE jobs SET status=?, notes=?,
                    submitted_at=CASE WHEN ?='submitted' THEN ? ELSE submitted_at END
-                   WHERE id=? AND status!='submitted'""",
-                (outcome, details, outcome, now, job_id))
+                   WHERE id=? AND status!='submitted'
+                     AND (status!='submission_pending' OR ?='submitted')""",
+                (outcome, details, outcome, now, job_id, outcome))
 
 
 def add_attempt(job_id, outcome, details):
