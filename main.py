@@ -97,7 +97,8 @@ def main():
     if args.command == 'discover':
         jobs, errors = core.discover(cfg)
         new = core.store_jobs(jobs, cfg)
-        print(f'Fetched {len(jobs)} listings, {new} new.')
+        employers = len({job['id'].rsplit(':', 1)[0] for job in jobs})
+        print(f'Fetched {len(jobs)} listings from {employers} employer boards, {new} new.')
         for error in errors:
             print('SOURCE ERROR', error)
         if errors and not jobs:

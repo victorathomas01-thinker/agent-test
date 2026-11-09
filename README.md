@@ -17,7 +17,7 @@ On other platforms, run `python -m pip install -r requirements.txt`, `python -m 
 .\.venv\Scripts\python.exe main.py logs
 ```
 
-- **Discovery.** The starter feeds cover Canonical, Duolingo, Cloudflare, Affirm, and Zoox. Change the board or site identifiers in the ignored local `config.json` to cover other employers. To import jobs, use `main.py import YOUR_JOBS.csv` with the columns in `examples/jobs.csv`.
+- **Discovery.** Each run checks the preset boards and finds up to 25 additional employers using SimplifyJobs' internship and new-grad feeds. The agent ranks board leads using your job and location preferences and imports openings from the employer's public Greenhouse or Lever board. Listings from other hiring platforms and links without a board identifier are skipped. Adjust `max_discovered_boards` in the ignored local `config.json` to change the cap, or set it to zero to use only configured boards. To import jobs, use `main.py import YOUR_JOBS.csv` with the columns in `examples/jobs.csv`.
 - **Eligibility.** Discovered and imported jobs use the same title, location, contract, seniority, GPA, work authorization, and sponsorship rules. Use `list --all` to see exclusions and their reasons. The rules are heuristic and can miss requirements.
 - **Verified answers.** Use `main.py set work_authorized_us yes` for a confirmed built-in answer or `main.py remember "Do you speak French?" "Yes"` for a confirmed answer tied to the exact question wording. Remember only reusable answers. Unknown questions and required checkbox or radio controls go to review.
 - **Resume.** Set the local file with `main.py set resume_path PATH_TO_RESUME`. The browser attaches the original file to a recognized resume field in the disconnected copy. Resume tailoring is outside this implementation.
@@ -26,3 +26,4 @@ On other platforms, run `python -m pip install -r requirements.txt`, `python -m 
 Keep the local config, database, and resumes out of Git. The tracked example has blank applicant fields. Attempt details store field labels, answer keys, and outcomes. They omit filled values and resume paths.
 
 Discovery uses the [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html) and [Lever Postings API](https://github.com/lever/postings-api).
+Employer board leads come from [Summer 2027 Internships](https://github.com/SimplifyJobs/Summer2027-Internships) and [New Grad Positions](https://github.com/SimplifyJobs/New-Grad-Positions). The internship feed can be updated in `employer_feeds` when the hiring season changes.

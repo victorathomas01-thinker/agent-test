@@ -18,6 +18,11 @@ class CoreTests(unittest.TestCase):
     def test_remote_outside_preferred_region(self):
         j={'title':'Software Engineer Intern','location':'Remote Canada','description':''}
         self.assertFalse(evaluate(j,CFG)[1])
+    def test_intern_must_match_job_field(self):
+        cfg = {**CFG, 'preferences': {**CFG['preferences'], 'keywords': ['software engineer', 'intern']}}
+        job = {'title': 'Graphic Design Intern', 'location': 'Remote', 'description': ''}
+        self.assertFalse(evaluate(job, cfg)[1])
+        self.assertTrue(evaluate({**job, 'title': 'Software Engineering Intern'}, cfg)[1])
     def test_gpa(self):
         j={'title':'Software Engineer Intern','location':'Charlotte','description':'Minimum GPA 3.0 is required'}
         self.assertFalse(evaluate(j,CFG)[1])

@@ -32,7 +32,12 @@
     "lever_sites": [
       "zoox"
     ],
-    "max_per_source": 500
+    "max_per_source": 500,
+    "employer_feeds": [
+      "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json",
+      "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json"
+    ],
+    "max_discovered_boards": 25
   },
   "preferences": {
     "minimum_score": 20,

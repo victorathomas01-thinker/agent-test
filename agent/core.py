@@ -1,7 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
 import csv, hashlib, html, json, re, sqlite3, urllib.request, urllib.parse
 from tempfile import NamedTemporaryFile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from .employers import board_from_url, find_boards
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'agent.sqlite3'
@@ -51,26 +54,90 @@ def plain(s):
     s = re.sub(r'<[^>]+>', ' ', html.unescape(s or ''))
     return re.sub(r'\s+', ' ', s).strip()
 
+def fetch_board(provider, slug, company, maximum, discovered=False):
+    token = urllib.parse.quote(slug, safe='')
+    if provider == 'greenhouse':
+        data = http_json(f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true')
+        postings = data['jobs']
+    else:
+        postings = http_json(f'https://api.lever.co/v0/postings/{token}?mode=json')
+
+    jobs = []
+    for posting in postings[:maximum]:
+        if provider == 'greenhouse':
+            title = posting.get('title', '')
+            location = (posting.get('location') or {}).get('name', '')
+            url = posting.get('absolute_url', '')
+            description = posting.get('content', '')
+        else:
+            title = posting.get('text', '')
+            location = lever_location(posting)
+            url = posting.get('applyUrl') or posting.get('hostedUrl', '')
+            description = posting.get('descriptionPlain') or posting.get('description')
+        if discovered and board_from_url(url) != (provider, slug):
+            continue
+        jobs.append({
+            'id': f'{provider}:{slug}:{posting["id"]}',
+            'source': provider,
+            'company': company,
+            'title': title or '',
+            'location': location or '',
+            'url': url or '',
+            'description': plain(description),
+        })
+    return jobs
+
+
+def discovery_rank(listing, cfg):
+    locations = listing.get('locations')
+    if not isinstance(locations, list):
+        locations = []
+    title = listing.get('title')
+    if not isinstance(title, str):
+        title = ''
+    # A clue can contain multiple locations. Give the board credit for its best match.
+    def match(location):
+        score, eligible, _ = evaluate({
+            'title': title, 'location': str(location), 'description': '', 'url': listing['url'],
+        }, cfg)
+        return eligible, score
+
+    return max(map(match, locations or ['']))
+
+
 def discover(cfg):
-    all_jobs=[]; errors=[]
-    for board in cfg['discovery']['greenhouse_boards']:
+    discovery = cfg['discovery']
+    configured = [
+        ('greenhouse', slug, slug) for slug in discovery['greenhouse_boards']
+    ] + [
+        ('lever', slug, slug) for slug in discovery['lever_sites']
+    ]
+    known = {(provider, slug.lower()) for provider, slug, _ in configured}
+    found, errors = find_boards(
+        discovery.get('employer_feeds', []),
+        known,
+        max(0, discovery.get('max_discovered_boards', 0)),
+        http_json,
+        lambda listing: discovery_rank(listing, cfg),
+    )
+    sources = list(dict.fromkeys(configured)) + [(provider, slug, slug) for provider, slug in found]
+    discovered = set(found)
+
+    def fetch(source):
+        provider, slug, company = source
         try:
-            data=http_json('https://boards-api.greenhouse.io/v1/boards/'+urllib.parse.quote(board, safe='')+'/jobs?content=true')
-            for item in data.get('jobs',[])[:cfg['discovery']['max_per_source']]:
-                all_jobs.append(dict(id=f'greenhouse:{board}:{item["id"]}',source='greenhouse',company=board,
-                  title=item.get('title',''), location=item.get('location',{}).get('name',''),
-                  url=item.get('absolute_url',''),description=plain(item.get('content',''))))
-        except Exception as e: errors.append(f'Greenhouse {board}: {str(e)}')
-    for site in cfg['discovery']['lever_sites']:
-        try:
-            data=http_json('https://api.lever.co/v0/postings/'+urllib.parse.quote(site,safe='')+'?mode=json')
-            for item in data[:cfg['discovery']['max_per_source']]:
-                all_jobs.append(dict(id=f'lever:{site}:{item["id"]}',source='lever',company=site,
-                 title=item.get('text',''), location=lever_location(item),
-                 url=item.get('applyUrl') or item.get('hostedUrl',''),
-                 description=plain(item.get('descriptionPlain') or item.get('description') or '')))
-        except Exception as e: errors.append(f'Lever {site}: {str(e)}')
-    return all_jobs,errors
+            return fetch_board(provider, slug, company, discovery['max_per_source'],
+                               (provider, slug) in discovered), None
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            return [], f'{provider} {slug}: {error}'
+
+    jobs = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for postings, error in pool.map(fetch, sources):
+            jobs.extend(postings)
+            if error:
+                errors.append(error)
+    return jobs, errors
 
 def lever_location(item):
     categories = item.get('categories') or {}
@@ -112,9 +179,14 @@ def evaluate(job,cfg):
         reasons.append('Review US work authorization requirement')
     if re.search(r'\b(?:must have|requires?)\s+(?:a\s+)?(?:completed\s+)?(?:bachelor.?s|master.?s|phd)\s+degree\b',description) and not re.search(r'\bintern(ship)?\b',title):
         reasons.append('May require completed degree — manually review')
-    hits = sum(bool(re.search(r'(?<!\w)' + re.escape(key.lower()) + r'(?!\w)', title))
-               for key in p['keywords'] if key)
-    score=hits*25
+    search_title = re.sub(r'\bsoftware engineering\b', 'software engineer', title)
+    keywords = {key.lower() for key in p['keywords'] if key}
+    fields = keywords - {'intern', 'internship', 'co-op', 'junior', 'entry level'}
+    hits = {key for key in keywords
+            if re.search(r'(?<!\w)' + re.escape(key) + r'(?!\w)', search_title)}
+    if fields and not fields.intersection(hits):
+        reasons.append('No matching job field')
+    score = len(hits) * 25
     if 'intern' in title or 'co-op' in title or 'entry' in title or 'junior' in title: score+=18
     location_matches = preferred_location(location, p['locations'])
     if location_matches: score+=15
@@ -144,7 +216,7 @@ def store_jobs(jobs,cfg):
         found=con.execute('SELECT status FROM jobs WHERE id=?',(job['id'],)).fetchone()
         if not found:new+=1
         con.execute('''INSERT INTO jobs (id,source,company,title,location,url,description,score,eligible,reason,last_seen)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, company=excluded.company,
            location=excluded.location,url=excluded.url,description=excluded.description,score=excluded.score,
            eligible=excluded.eligible,reason=excluded.reason,last_seen=excluded.last_seen''',
            (job['id'],job['source'],job['company'],job['title'],job['location'],job['url'],job['description'],score,int(eligible),reason,utc_now()))
