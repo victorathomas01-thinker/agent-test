@@ -70,6 +70,8 @@ def main():
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
     review = commands.add_parser('review-submit', help='Open one official form for attended submission.')
     review.add_argument('job_id')
+    review.add_argument('--prefill', action='store_true',
+                        help='Enter saved contact details on the live form after you approve the posting.')
     release = commands.add_parser('release-submit', help='Clear a hold after verifying no submission occurred.')
     release.add_argument('job_id')
     setting = commands.add_parser('set')
@@ -193,10 +195,12 @@ def main():
             if job['status'] in {'submitted', 'submission_pending'}:
                 parser.error('This listing is already submitted or pending confirmation.')
             print(f'{job["title"]} | {job["company"]} | {job["url"]}')
+            if args.prefill:
+                print('Prefill will enter saved contact details on this employer’s live page.')
             if input('Type the job ID to open this form for manual submission: ') != args.job_id:
                 parser.error('Job ID did not match.')
             try:
-                outcome = review_submission(con, job)
+                outcome = review_submission(con, job, cfg if args.prefill else None)
             except ValueError as error:
                 parser.error(str(error))
             print('Employer receipt recorded.' if outcome == 'submitted' else

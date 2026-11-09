@@ -8,7 +8,7 @@ from unittest.mock import patch
 from agent import core
 from agent.browser import apply_to_page, find_form_frame, preview_snapshot
 from agent.rehearsal import rehearse_submission
-from agent.submission import official_job_url, release_submission, reserve_submission, review_page
+from agent.submission import official_job_url, prefill_contact, release_submission, reserve_submission, review_page
 
 FIXTURE = Path(__file__).with_name('mock_form.html')
 CFG = {
@@ -193,3 +193,46 @@ class BrowserTest(unittest.TestCase):
                     if not confirmed:
                         release_submission(con, job['id'])
                         self.assertEqual(con.execute('SELECT status FROM jobs').fetchone()[0], 'needs_review')
+
+    def test_attended_prefill_only_sets_unambiguous_blank_contact_fields(self):
+        url = 'https://job-boards.greenhouse.io/example/jobs/123'
+        job = {'id': 'greenhouse:example:123', 'url': url}
+        context = self.browser.new_context(offline=True)
+        try:
+            page = context.new_page()
+            requests = []
+            html = """
+              <form>
+                <label>First Name<input id="first"></label>
+                <label>Email<input id="email" name="email"></label>
+                <label>Phone<input id="phone" type="tel" value="000-000-0000"></label>
+                <label>LinkedIn<input id="link-one" type="url"></label>
+                <label>LinkedIn<input id="link-two" type="url"></label>
+                <label>Are you willing to relocate?<input id="relocate"></label>
+                <label>Resume<input id="resume" type="file"></label>
+                <button type="submit">Submit</button>
+              </form>
+              <label>Email<input id="outside" type="email"></label>
+            """
+
+            def route_request(route):
+                requests.append(route.request.method)
+                if route.request.url == url and route.request.method == 'GET':
+                    route.fulfill(content_type='text/html', body=html)
+                else:
+                    route.abort()
+
+            context.route('**/*', route_request)
+            page.goto(url)
+            cfg = {**CFG, 'profile': {**CFG['profile'], 'phone': '111-111-1111',
+                                      'linkedin': 'https://example.invalid/profile'},
+                   'verified_answers': {'willing_to_relocate': True}}
+            self.assertEqual(prefill_contact(page, job, cfg), ['first_name', 'email'])
+            self.assertEqual(page.locator('#first').input_value(), 'Test')
+            self.assertEqual(page.locator('#email').input_value(), 'test@example.invalid')
+            self.assertEqual(page.locator('#phone').input_value(), '000-000-0000')
+            for field in ('link-one', 'link-two', 'relocate', 'resume', 'outside'):
+                self.assertEqual(page.locator(f'#{field}').input_value(), '')
+            self.assertEqual(requests, ['GET'])
+        finally:
+            context.close()

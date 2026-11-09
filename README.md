@@ -46,6 +46,6 @@ Run `main.py rehearse-submit` to exercise the submit button, form POST, and rece
 
 ## Attended submission
 
-Attended submission is off by default. To enable it, explicitly set `automation.allow_live_submit` to true in the ignored local config. Run `main.py review-submit JOB_ID` in an interactive terminal and type the exact job ID to open the verified Greenhouse or Lever listing. Fill and submit the form yourself in Chromium, then return to the terminal to check for a receipt. Scheduled runs remain dry-run only.
+Attended submission is off by default. To enable it, explicitly set `automation.allow_live_submit` to true in the ignored local config. Run `main.py review-submit JOB_ID` in an interactive terminal and type the exact job ID to open the verified Greenhouse or Lever listing. Add `--prefill` to enter saved contact details on the employer's live page when the agent can identify a single compatible form. It skips existing values, ambiguous fields, questionnaire answers, and resume uploads. Review, complete, and submit the form yourself in Chromium, then return to the terminal to check for a receipt. Scheduled runs remain dry-run only.
 
 The agent records a browser receipt only when it observes a successful form POST and an acknowledgment with the employer and role on the same host. An ambiguous result leaves the listing on hold. After checking the employer, use `receipt` to record a saved confirmation or `release-submit JOB_ID` after closing the browser and verifying that nothing was submitted.

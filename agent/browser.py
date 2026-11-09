@@ -9,13 +9,13 @@ from .core import ROOT, add_attempt, answer_for
 FIELDS = 'input, textarea, select, [role="combobox"], [role="listbox"], [role="textbox"]'
 SUPPORTED = {'text', 'email', 'tel', 'url', 'number', 'textarea', 'select-one'}
 IDENTITY_FIELDS = (
-    'input[type=email], input[autocomplete=email], input[name*=email i], '
+    'input[type=email], input[autocomplete=email], input[name*=email i], input[id=email i], '
     'input[autocomplete=given-name], input[name=first_name i], input[name=firstName i]'
 )
 
 
-def field_metadata(page):
-    return page.eval_on_selector_all(FIELDS, """elements => elements.map((e, index) => {
+def field_metadata(scope):
+    return scope.locator(FIELDS).evaluate_all("""elements => elements.map((e, index) => {
       const labelText = node => node?.textContent.trim() || '';
       const ariaName = node => (node?.getAttribute('aria-labelledby') || '').split(/\\s+/)
         .map(id => labelText(document.getElementById(id))).filter(Boolean).join(' ')
