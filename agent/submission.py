@@ -6,7 +6,7 @@ import re
 from urllib.parse import urlsplit
 
 from .browser import FIELDS, IDENTITY_FIELDS, field_metadata, find_form_frame, is_resume_field
-from .core import answer_for, normalize_question, record_attempt
+from .core import answer_for, canonical_url, normalize_question, record_attempt
 from .employers import board_from_url
 from .receipts import receipt_fingerprint, record_receipt
 from .sessions import EDGE_CHANNEL, open_profile, posting_scope, requires_sign_in
@@ -49,7 +49,7 @@ DROPDOWN_EQUIVALENTS = {
 def official_job_url(job):
     url = job['url']
     board = board_from_url(url)
-    if board is None:
+    if board is None or board[0] not in {'greenhouse', 'lever'}:
         return False
     posting = urlsplit(url).path.rstrip('/').removesuffix('/apply').rsplit('/', 1)[-1]
     return job['id'].lower() == ':'.join((*board, posting.lower()))
@@ -60,11 +60,17 @@ def reserve_submission(con, job):
         raise ValueError('Attended submission requires an eligible, direct Greenhouse or Lever listing.')
     with con:
         con.execute('BEGIN IMMEDIATE')
-        current = con.execute('SELECT status, url, eligible FROM jobs WHERE id=?', (job['id'],)).fetchone()
+        current = con.execute('SELECT status, url, eligible, submitted_at FROM jobs WHERE id=?', (job['id'],)).fetchone()
         if current is None or current['url'] != job['url'] or not current['eligible']:
             raise ValueError('The listing changed. Review it again before proceeding.')
-        if current['status'] in {'submitted', 'submission_pending'}:
+        if current['submitted_at'] or current['status'] in {'submitted', 'submission_pending'}:
             raise ValueError('This job was submitted or has an unresolved submission. Check the employer first.')
+        identity = canonical_url(job['url'])
+        prior = con.execute("""SELECT url FROM jobs WHERE id!=?
+                            AND (submitted_at IS NOT NULL OR status IN ('submitted', 'submission_pending'))""",
+                            (job['id'],))
+        if identity and any(canonical_url(row['url']) == identity for row in prior):
+            raise ValueError('Another record for this posting has a submission or unresolved attempt.')
         record_attempt(con, job['id'], 'submission_pending', 'Reserved for attended submission.')
 
 

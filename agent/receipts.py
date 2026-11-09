@@ -109,7 +109,7 @@ def record_receipt(con, job_id, text, *, details='Matched a user-provided employ
             if len(existing) == 1 and (existing[0]['job_id'], existing[0]['fingerprint']) == (job_id, fingerprint):
                 return False
             raise ValueError('A receipt is already associated with this job or another listing.')
-        if job['status'] == 'submitted':
+        if job['submitted_at'] or job['status'] == 'submitted':
             raise ValueError('This listing is already marked submitted.')
         recorded_at = utc_now()
         con.execute('INSERT INTO receipts(job_id, fingerprint, recorded_at) VALUES (?, ?, ?)',

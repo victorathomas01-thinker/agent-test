@@ -2,9 +2,8 @@ import json
 import re
 from pathlib import Path
 from time import monotonic
-from urllib.parse import urlsplit
 
-from .core import ROOT, add_attempt, answer_for
+from .core import ROOT, add_attempt, answer_for, valid_application_url
 from .sessions import requires_sign_in
 
 FIELDS = 'input, textarea, select, [role="combobox"], [role="listbox"], [role="textbox"]'
@@ -192,18 +191,23 @@ def run_browser(job, cfg, live=False):
 def preview(url, cfg):
     from playwright.sync_api import sync_playwright
 
-    address = urlsplit(url)
-    if address.scheme != 'https' or not address.hostname or address.username is not None:
+    if not valid_application_url(url):
         return 'needs_review', 'An HTTPS application URL without credentials is required.'
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=cfg['automation'].get('headless', True))
         try:
             source = browser.new_context(accept_downloads=False, service_workers='block')
+            source.route('**/*', lambda route: route.continue_() if valid_application_url(route.request.url)
+                         else route.abort())
             page = source.new_page()
             response = page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            if not valid_application_url(page.url):
+                return 'needs_review', 'The application redirected to an unsupported address.'
             if requires_sign_in(page):
                 return 'needs_review', 'Sign-in needed.'
+            if response is not None and response.status in {404, 410}:
+                return 'expired', 'The posting returned HTTP 404 or 410.'
             if response is None or not response.ok:
                 return 'needs_review', 'Application page was unavailable.'
             frame = find_form_frame(page)

@@ -10,7 +10,10 @@ from agent import core
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
-from agent.resume import write_preview
+from agent.resume import read_resume, write_preview
+from agent.matching import STRATEGIES, fit_signals
+from agent.operations import run_record, track_application, write_dashboard
+from agent.packages import prepare_package
 from agent.sessions import sign_in
 from agent.submission import official_job_url, release_submission, review_submission
 
@@ -22,11 +25,18 @@ def positive_integer(value):
     return number
 
 
-def discover_jobs(cfg):
-    jobs, errors = core.discover(cfg)
+def discover_jobs(cfg, summary=None):
+    started = core.utc_now()
+    coverage = []
+    jobs, errors = core.discover(cfg, coverage)
     new = core.store_jobs(jobs, cfg)
+    expired = core.expire_unlisted(coverage, jobs, started)
     employers = len({job['id'].rsplit(':', 1)[0] for job in jobs})
+    if summary is not None:
+        summary.update(postings=len(jobs), new=new, boards=employers, expired=expired, source_errors=errors)
     print(f'Fetched {len(jobs)} listings from {employers} employer boards, {new} new.')
+    if expired:
+        print(f'{expired} listings are no longer shown on complete public boards.')
     for error in errors:
         print('SOURCE ERROR', error)
     if errors and not jobs:
@@ -39,8 +49,19 @@ def dry_run(job, cfg):
     return outcome
 
 
-def run_batch(cfg, limit, fresh_since):
-    outcomes = {'prepared': 0, 'needs_review': 0, 'failed': 0}
+def package_for(con, job, cfg, cover=False):
+    folder, version = prepare_package(resume_file(cfg), dict(job), cover=cover)
+    with con:
+        con.execute('INSERT OR IGNORE INTO packages VALUES (?, ?, ?, ?)',
+                    (job['id'], version, core.utc_now(), str(folder.relative_to(core.ROOT))))
+    return folder
+
+
+def run_batch(cfg, limit, fresh_since, summary=None):
+    outcomes = {'prepared': 0, 'needs_review': 0, 'expired': 0, 'failed': 0}
+    if summary is not None:
+        summary['outcomes'] = outcomes
+        summary['packages'] = 0
     daily_limit = positive_integer(cfg['preferences']['max_previews_per_day'])
     with closing(core.connect()) as con:
         core.refresh_eligibility(con, cfg)
@@ -48,7 +69,20 @@ def run_batch(cfg, limit, fresh_since):
             job = core.claim_preview(con, daily_limit, fresh_since)
             if job is None:
                 break
-            outcomes[dry_run(job, cfg)] += 1
+            preview_cfg = cfg
+            if summary is not None:
+                try:
+                    folder = package_for(con, job, cfg)
+                    master = folder / ('master' + resume_file(cfg).suffix.lower())
+                    preview_cfg = {**cfg, 'profile': {**cfg['profile'], 'resume_path': str(master)}}
+                except (OSError, ValueError) as error:
+                    details = 'Application package needs review (' + type(error).__name__ + ').'
+                    core.add_attempt(job['id'], 'needs_review', details)
+                    print(f'{job["id"]} | needs_review | {details}')
+                    outcomes['needs_review'] += 1
+                    continue
+                summary['packages'] += 1
+            outcomes[dry_run(job, preview_cfg)] += 1
     print(f'Batch complete | {sum(outcomes.values())} previews | '
           + ' | '.join(f'{status}: {count}' for status, count in outcomes.items()))
     if not any(outcomes.values()):
@@ -139,6 +173,7 @@ def main():
     listings = commands.add_parser('list')
     listings.add_argument('--all', action='store_true')
     listings.add_argument('--limit', type=positive_integer, default=30)
+    listings.add_argument('--strategy', choices=STRATEGIES)
     commands.add_parser('import').add_argument('csv', type=Path)
     apply = commands.add_parser('apply')
     apply.add_argument('job_id')
@@ -146,11 +181,24 @@ def main():
     apply.add_argument('--live', action='store_true', help=argparse.SUPPRESS)
     tailor = commands.add_parser('tailor', help='Create a local role-specific resume preview.')
     tailor.add_argument('job_id')
+    package = commands.add_parser('package', help='Build a private versioned application package.')
+    package.add_argument('job_id')
+    package.add_argument('--cover-letter', action='store_true')
+    explain = commands.add_parser('explain', help='Show eligibility and ranking signals for a listing.')
+    explain.add_argument('job_id')
+    explain.add_argument('--strategy', choices=STRATEGIES)
+    commands.add_parser('dashboard', help='Generate a local review dashboard.')
+    commands.add_parser('health', help='Check the local database and master resume.')
+    track = commands.add_parser('track', help='Record an outcome or follow-up for a confirmed application.')
+    track.add_argument('job_id')
+    track.add_argument('--status', choices=('assessment', 'interview', 'offer', 'rejected', 'withdrawn'))
+    track.add_argument('--followup', metavar='YYYY-MM-DD')
     batch = commands.add_parser('batch')
     batch.add_argument('--limit', type=positive_integer)
     batch.add_argument('--live', action='store_true', help=argparse.SUPPRESS)
     unattended = commands.add_parser('run', help='Discover jobs and preview eligible new listings.')
     unattended.add_argument('--limit', type=positive_integer)
+    unattended.add_argument('--strategy', choices=STRATEGIES)
     args = parser.parse_args()
     if getattr(args, 'live', False):
         parser.error('Live submission is disabled.')
@@ -199,6 +247,15 @@ def main():
     if not core.CONFIG.exists():
         parser.error('Run python main.py init first.')
     cfg = core.load_config()
+    if getattr(args, 'strategy', None):
+        cfg['preferences']['strategy'] = args.strategy
+    if args.command in {'discover', 'run', 'list', 'batch', 'queue', 'dashboard', 'explain'}:
+        source = resume_file(cfg)
+        if source:
+            try:
+                cfg['_candidate_evidence'] = read_resume(source)
+            except (OSError, ValueError):
+                print('Master resume could not be read for ranking. Using posting-based ranking.')
     if args.command == 'set':
         if args.key in cfg['verified_answers']:
             value = args.value.lower()
@@ -234,20 +291,67 @@ def main():
         return
     if args.command in {'batch', 'run'}:
         maximum = positive_integer(cfg['preferences']['max_applications_per_run'])
-        fresh_since = None
+        limit = min(args.limit or maximum, maximum)
         if args.command == 'run':
-            with closing(core.connect()) as con:
-                scan_local_receipts(con)
-            fresh_since = core.utc_now()
-            discover_jobs(cfg)
-            cfg['automation']['headless'] = True
-        run_batch(cfg, min(args.limit or maximum, maximum), fresh_since)
+            with run_record() as summary:
+                with closing(core.connect()) as con:
+                    scan_local_receipts(con)
+                fresh_since = core.utc_now()
+                discover_jobs(cfg, summary)
+                cfg['automation']['headless'] = True
+                run_batch(cfg, limit, fresh_since, summary)
+        else:
+            run_batch(cfg, limit, None)
         return
     if args.command == 'import':
         print(f'Imported {core.import_urls(args.csv, cfg)} new jobs.')
         return
 
     with closing(core.connect()) as con:
+        if args.command == 'explain':
+            row = con.execute("""SELECT j.*, COALESCE(d.workplace,'') AS workplace,
+                                 COALESCE(d.employment_type,'') AS employment_type, d.salary, d.published_at
+                                 FROM jobs j LEFT JOIN job_details d ON d.job_id=j.id WHERE j.id=?""",
+                              (args.job_id,)).fetchone()
+            if row is None:
+                parser.error('Job ID not found.')
+            job = dict(row)
+            score, eligible, blockers = core.evaluate(job, cfg)
+            _, reasons = fit_signals(job, cfg)
+            print(f'{job["title"]} | {"eligible" if eligible else "review or excluded"} | priority {score}')
+            for reason in [blockers, *reasons, job['salary'] or '']:
+                if reason:
+                    print(f'- {reason}')
+            return
+        if args.command == 'track':
+            if not args.status and not args.followup:
+                parser.error('Provide a status or follow-up date.')
+            try:
+                track_application(con, args.job_id, args.status, args.followup)
+            except ValueError as error:
+                parser.error(str(error))
+            print('Application tracking updated.')
+            return
+        if args.command == 'health':
+            integrity = con.execute('PRAGMA quick_check').fetchone()[0]
+            print(f'Database | {integrity}')
+            print(f'Master resume | {"available" if resume_file(cfg) else "missing"}')
+            if integrity != 'ok' or not resume_file(cfg):
+                raise SystemExit(1)
+            return
+        if args.command == 'dashboard':
+            core.refresh_eligibility(con, cfg)
+            print(write_dashboard(con, cfg))
+            return
+        if args.command == 'package':
+            job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
+            if job is None:
+                parser.error('Job ID not found.')
+            try:
+                print(package_for(con, job, cfg, args.cover_letter))
+            except (OSError, ValueError) as error:
+                parser.error(str(error))
+            return
         if args.command == 'scan-receipts':
             scan_local_receipts(con)
             return
@@ -274,7 +378,7 @@ def main():
             job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
             if job is None or not job['eligible'] or not official_job_url(job):
                 parser.error('Select an eligible, direct Greenhouse or Lever listing.')
-            if job['status'] in {'submitted', 'submission_pending'}:
+            if job['submitted_at'] or job['status'] in {'submitted', 'submission_pending'}:
                 parser.error('This listing is already submitted or pending confirmation.')
             print(f'{job["title"]} | {job["company"]} | {job["url"]}')
             if args.prefill:
@@ -344,7 +448,7 @@ def main():
             job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
             if job is None:
                 parser.error('Job ID not found.')
-            if job['status'] == 'submitted':
+            if job['submitted_at'] or job['status'] == 'submitted':
                 parser.error('This job was previously submitted.')
             if job['status'] == 'submission_pending':
                 parser.error('This job has an unresolved submission. Check the employer first.')
