@@ -314,6 +314,10 @@ VERIFIED_PATTERNS = {
     'over_18': r'are you (?:at least 18(?: years old| years of age)?|18 years of age or older)',
     'willing_to_relocate': r'are you willing to relocate',
 }
+NARROW_US_SPONSORSHIP = re.compile(
+    r"(?:do you require immigration sponsorship to work for [a-z0-9 .&'\-]+ in the united states"
+    r"|will you require immigration sponsorship at any point in the future to maintain authorization to work in the united states)"
+)
 
 
 def normalize_question(label):
@@ -326,6 +330,10 @@ def answer_for(label, cfg):
         return None, None
     if normalized in cfg.get('verified_questions', {}):
         return cfg['verified_questions'][normalized] or None, 'verified question'
+    if NARROW_US_SPONSORSHIP.fullmatch(normalized):
+        key = 'needs_sponsorship_now_or_future'
+        # A combined No answers each timeframe. A combined Yes does not say which one.
+        return ('No' if cfg['verified_answers'].get(key) is False else None), key
     for key, pattern in VERIFIED_PATTERNS.items():
         if re.fullmatch(pattern, normalized):
             value = cfg['verified_answers'].get(key)

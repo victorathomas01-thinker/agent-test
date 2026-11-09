@@ -38,7 +38,8 @@ def field_metadata(scope):
         required: e.required || !!e.closest('[aria-required="true"]')
           || /\\*\\s*$/.test(ariaName(e) || label)
           || !!group && /\\*\\s*$/.test(labelText(group.querySelector(':scope > legend'))),
-        visible: !!e.getClientRects().length && getComputedStyle(e).visibility === 'visible',
+        visible: !!e.getClientRects().length && getComputedStyle(e).visibility === 'visible'
+          && !e.closest('[aria-hidden="true"]'),
         disabled: e.matches(':disabled, [aria-disabled="true"]') || e.readOnly,
         options,
       };
@@ -62,6 +63,13 @@ def resume_file(cfg):
     if path.suffix.lower() in {'.pdf', '.docx', '.doc', '.txt', '.rtf'} and path.is_file():
         return path.resolve()
     return None
+
+
+def is_resume_field(field):
+    label = f'{field["label"]} {field["name"]} {field["id"]}'
+    return field['type'] == 'file' and bool(
+        re.search(r'\b(resume|résumé|cv)\b', re.sub(r'[_-]', ' ', label), re.I)
+    )
 
 
 def grouped_choices(page, groups, cfg, filled, unresolved):
@@ -110,8 +118,7 @@ def apply_to_page(page, cfg, live=False):
         label = field['label'].strip().rstrip('*').strip()
         identifier = field['name'] or field['id']
         name = (label or identifier or f'field {field["index"] + 1}')[:160]
-        upload_label = re.sub(r'[_-]', ' ', f'{label} {identifier}')
-        is_resume = kind == 'file' and re.search(r'\b(resume|résumé|cv)\b', upload_label, re.I)
+        is_resume = is_resume_field(field)
         if not field['visible'] and not is_resume:
             continue
         if kind in {'radio', 'checkbox'} and field['group'] >= 0:

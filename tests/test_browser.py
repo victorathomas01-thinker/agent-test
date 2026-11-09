@@ -8,7 +8,10 @@ from unittest.mock import patch
 from agent import core
 from agent.browser import apply_to_page, find_form_frame, preview_snapshot
 from agent.rehearsal import rehearse_submission
-from agent.submission import official_job_url, prefill_contact, release_submission, reserve_submission, review_page
+from agent.submission import (
+    attach_reviewed_resume, official_job_url, prefill_contact, prefill_verified_fields,
+    release_submission, reserve_submission, review_page,
+)
 
 FIXTURE = Path(__file__).with_name('mock_form.html')
 CFG = {
@@ -233,6 +236,57 @@ class BrowserTest(unittest.TestCase):
             self.assertEqual(page.locator('#phone').input_value(), '000-000-0000')
             for field in ('link-one', 'link-two', 'relocate', 'resume', 'outside'):
                 self.assertEqual(page.locator(f'#{field}').input_value(), '')
+            self.assertEqual(requests, ['GET'])
+        finally:
+            context.close()
+
+    def test_attended_preparation_selects_verified_choice_and_reviewed_file(self):
+        url = 'https://job-boards.greenhouse.io/example/jobs/123'
+        job = {'id': 'greenhouse:example:123', 'url': url}
+        html = """
+          <form>
+            <label>Email<input name="email"></label>
+            <label for="auth">Are you legally authorized to work in the United States?</label>
+            <input id="auth" role="combobox" aria-controls="options" aria-expanded="false"
+                   onclick="document.querySelector('#options').hidden=false; this.setAttribute('aria-expanded','true')">
+            <ul id="options" role="listbox" hidden>
+              <li role="option" onclick="document.querySelector('#auth').value='Yes'">Yes</li>
+              <li role="option">No</li>
+            </ul>
+            <label>Resume<input type="file" name="resume" accept=".txt"></label>
+            <label>Cover Letter<input type="file" name="cover_letter"></label>
+            <label>How did you hear about us?
+              <select name="referral"><option value="">Choose</option><option>Yes</option></select>
+            </label>
+          </form>
+        """
+        context = self.browser.new_context(offline=True)
+        try:
+            requests = []
+
+            def respond(route):
+                requests.append(route.request.method)
+                if route.request.method == 'GET' and route.request.url == url:
+                    route.fulfill(content_type='text/html', body=html)
+                else:
+                    route.abort()
+
+            context.route('**/*', respond)
+            page = context.new_page()
+            page.goto(url)
+            self.assertEqual(prefill_verified_fields(page, job, CFG), ['work_authorized_us'])
+            self.assertEqual(page.locator('#auth').input_value(), 'Yes')
+            self.assertEqual(page.locator('[name=referral]').input_value(), '')
+            with tempfile.TemporaryDirectory() as folder:
+                pdf = Path(folder) / 'sample.pdf'
+                pdf.write_bytes(b'%PDF-1.0 synthetic')
+                text = Path(folder) / 'sample.txt'
+                text.write_text('Synthetic resume', encoding='utf-8')
+                self.assertFalse(attach_reviewed_resume(page, job, pdf))
+                self.assertTrue(attach_reviewed_resume(page, job, text))
+                self.assertFalse(attach_reviewed_resume(page, job, text))
+            self.assertEqual(page.locator('[name=resume]').evaluate('e => e.files[0].name'), 'sample.txt')
+            self.assertEqual(page.locator('[name=cover_letter]').input_value(), '')
             self.assertEqual(requests, ['GET'])
         finally:
             context.close()

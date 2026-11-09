@@ -7,7 +7,7 @@ import sys
 
 from agent import core
 from agent.browser import resume_file, run_browser
-from agent.receipts import record_receipt
+from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
 from agent.resume import write_preview
 from agent.submission import official_job_url, release_submission, review_submission
@@ -55,6 +55,45 @@ def run_batch(cfg, limit, fresh_since):
         raise SystemExit(1)
 
 
+def scan_local_receipts(con):
+    summary = scan_receipts(con, core.ROOT / 'private' / 'receipts')
+    print('Receipt scan | ' + ' | '.join(f'{status}: {count}' for status, count in summary.items()))
+
+
+def print_review_queue(con, limit):
+    jobs = con.execute("""SELECT * FROM jobs
+        WHERE status='submission_pending'
+           OR (eligible=1 AND status IN ('needs_review', 'prepared', 'failed'))
+        ORDER BY CASE status WHEN 'submission_pending' THEN 0 WHEN 'prepared' THEN 1
+                             WHEN 'needs_review' THEN 2 ELSE 3 END, score DESC, id LIMIT ?""",
+                       (limit,)).fetchall()
+    if not jobs:
+        print('No applications are waiting for review.')
+    for job in jobs:
+        print(f'{job["id"]} | {job["status"]} | {job["title"]} | {job["company"]}')
+        print(f'  {job["url"]}')
+        if job['status'] == 'submission_pending':
+            print('  Verify the employer receipt before trying this application again.')
+        elif job['status'] == 'needs_review':
+            try:
+                items = json.loads(job['notes']).get('unresolved', [])
+            except (ValueError, AttributeError, TypeError):
+                items = []
+            if not isinstance(items, list):
+                items = []
+            labels = dict.fromkeys(
+                ''.join(char for char in item['field'] if char.isprintable())
+                for item in items if isinstance(item, dict) and item.get('required')
+                and isinstance(item.get('field'), str)
+            )
+            if labels:
+                print('  Required review')
+                for label in labels:
+                    print(f'  - {label}')
+            else:
+                print('  Review the form or see the dry-run log for details.')
+
+
 def main():
     parser = argparse.ArgumentParser(description='Personal job application agent')
     commands = parser.add_subparsers(dest='command', required=True)
@@ -66,12 +105,19 @@ def main():
     logs.add_argument('--limit', type=positive_integer, default=20)
     receipt = commands.add_parser('receipt', help='Record a locally saved employer confirmation.')
     receipt.add_argument('job_id')
-    receipt.add_argument('confirmation', type=Path, help='UTF-8 text copied from the employer confirmation.')
+    receipt.add_argument('confirmation', type=Path, help='A UTF-8 confirmation or an exported .eml receipt.')
+    commands.add_parser('scan-receipts', help='Match files from the local receipt inbox to pending jobs.')
+    queue = commands.add_parser('queue', help='Show previews and submissions that need your review.')
+    queue.add_argument('--limit', type=positive_integer, default=20)
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
     review = commands.add_parser('review-submit', help='Open one official form for attended submission.')
     review.add_argument('job_id')
     review.add_argument('--prefill', action='store_true',
                         help='Enter saved contact details on the live form after you approve the posting.')
+    review.add_argument('--attach-resume', type=Path,
+                        help='Attach this reviewed local resume on the employer page.')
+    review.add_argument('--prefill-verified', action='store_true',
+                        help='Enter uniquely matched verified eligibility answers on the live form.')
     release = commands.add_parser('release-submit', help='Clear a hold after verifying no submission occurred.')
     release.add_argument('job_id')
     setting = commands.add_parser('set')
@@ -163,6 +209,8 @@ def main():
         maximum = positive_integer(cfg['preferences']['max_applications_per_run'])
         fresh_since = None
         if args.command == 'run':
+            with closing(core.connect()) as con:
+                scan_local_receipts(con)
             fresh_since = core.utc_now()
             discover_jobs(cfg)
             cfg['automation']['headless'] = True
@@ -173,6 +221,13 @@ def main():
         return
 
     with closing(core.connect()) as con:
+        if args.command == 'scan-receipts':
+            scan_local_receipts(con)
+            return
+        if args.command == 'queue':
+            core.refresh_eligibility(con, cfg)
+            print_review_queue(con, args.limit)
+            return
         if args.command in {'review-submit', 'release-submit'}:
             if args.command == 'review-submit' and cfg['automation'].get('allow_live_submit') is not True:
                 parser.error('Attended submission is disabled in the local configuration.')
@@ -197,10 +252,19 @@ def main():
             print(f'{job["title"]} | {job["company"]} | {job["url"]}')
             if args.prefill:
                 print('Prefill will enter saved contact details on this employer’s live page.')
+            if args.prefill_verified:
+                print('Prefill will select matching verified eligibility answers on this employer’s live page.')
+            attachment = None
+            if args.attach_resume is not None:
+                attachment = resume_file({'profile': {'resume_path': str(args.attach_resume.resolve())}})
+                if attachment is None:
+                    parser.error('Select an existing resume file in a supported format.')
+                print(f'Attaching {attachment.name} may upload the file before you click Submit.')
             if input('Type the job ID to open this form for manual submission: ') != args.job_id:
                 parser.error('Job ID did not match.')
             try:
-                outcome = review_submission(con, job, cfg if args.prefill else None)
+                outcome = review_submission(con, job, cfg if args.prefill else None, attachment,
+                                            cfg if args.prefill_verified else None)
             except ValueError as error:
                 parser.error(str(error))
             print('Employer receipt recorded.' if outcome == 'submitted' else
@@ -208,7 +272,7 @@ def main():
             return
         if args.command == 'receipt':
             try:
-                confirmation = args.confirmation.read_text(encoding='utf-8-sig')
+                confirmation, _ = read_receipt(args.confirmation)
                 created = record_receipt(con, args.job_id, confirmation)
             except (OSError, ValueError) as error:
                 parser.error(str(error))

@@ -5,6 +5,12 @@ CFG={'profile':{'first_name':'Test','email':'test@example.invalid'},'verified_an
 class CoreTests(unittest.TestCase):
     def test_verified_answer(self):self.assertEqual(answer_for('Are you legally authorized to work in the United States?',CFG),('Yes','work_authorized_us'))
     def test_sponsorship(self):self.assertEqual(answer_for('Will you require visa sponsorship?',CFG),('No','needs_sponsorship_now_or_future'))
+    def test_narrow_sponsorship_questions_require_a_definitive_answer(self):
+        question = 'Do you require immigration sponsorship to work for Example in the United States?'
+        self.assertEqual(answer_for(question, CFG)[0], 'No')
+        yes = {**CFG, 'verified_answers': {'needs_sponsorship_now_or_future': True}}
+        self.assertIsNone(answer_for(question, yes)[0])
+        self.assertIsNone(answer_for(question.replace('the United States', 'Canada'), CFG)[0])
     def test_unknown(self):self.assertEqual(answer_for('Do you speak French?',CFG),(None,None))
     def test_reject_contract(self):
         j={'title':'Help Desk Contractor','location':'Charlotte','description':''}
