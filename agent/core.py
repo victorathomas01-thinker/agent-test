@@ -297,6 +297,7 @@ PROFILE_LABELS = {
     'first_name': ('first name', 'firstname', 'given name', 'legal first name'),
     'last_name': ('last name', 'lastname', 'surname', 'family name', 'legal last name'),
     'full_name': ('full name', 'fullname', 'name'),
+    'preferred_name': ('preferred name', 'preferred first name'),
     'email': ('email', 'email address', 'e-mail'),
     'phone': ('phone', 'phone number', 'mobile', 'telephone'),
     'city': ('city',), 'state': ('state', 'province'),

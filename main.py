@@ -280,7 +280,7 @@ def main():
             if args.prefill:
                 print('Prefill will enter saved contact details on this employer’s live page.')
             if args.prefill_verified:
-                print('Prefill will select matching verified eligibility and explicitly saved gender or pronoun answers on this employer’s live page.')
+                print('Prefill will select matching verified eligibility and explicitly saved personal choices on this employer’s live page.')
             attachment = None
             if args.attach_resume is not None:
                 attachment = resume_file({'profile': {'resume_path': str(args.attach_resume.resolve())}})

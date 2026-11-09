@@ -12,7 +12,7 @@ from .receipts import receipt_fingerprint, record_receipt
 from .sessions import EDGE_CHANNEL, open_profile, posting_scope, requires_sign_in
 
 CONTACT_FIELDS = {
-    'first_name': {'text'}, 'last_name': {'text'}, 'full_name': {'text'},
+    'first_name': {'text'}, 'last_name': {'text'}, 'full_name': {'text'}, 'preferred_name': {'text'},
     'email': {'text', 'email'}, 'phone': {'text', 'tel'},
     'linkedin': {'text', 'url'}, 'github': {'text', 'url'}, 'portfolio': {'text', 'url'},
 }
@@ -21,10 +21,18 @@ PERSONAL_DROPDOWNS = {
     'gender': {'gender', 'gender identity', 'which gender do you identify as',
                'what is your gender identity', 'how do you identify? (gender identity)'},
     'pronouns': {'pronouns', 'preferred pronouns', 'what are your pronouns', 'what pronouns do you use'},
+    'race': {'race', 'race/ethnicity', 'race or ethnicity', 'please indicate your race or ethnicity',
+             'how do you identify? (race/ethnicity)'},
+    'hispanic_latino': {'are you hispanic/latino', 'are you hispanic or latino',
+                       'hispanic/latino', 'hispanic or latino'},
+    'residence_state': {'state of residence', 'which u.s. state or canadian province do you reside in'},
+    'residence_country': {'country of residence', 'which country do you currently reside in'},
 }
-PRONOUN_LABELS = (
-    {'he/him', 'he/him/his'}, {'she/her', 'she/her/hers'}, {'they/them', 'they/them/theirs'},
-)
+DROPDOWN_EQUIVALENTS = {
+    'pronouns': ({'he/him', 'he/him/his'}, {'she/her', 'she/her/hers'}, {'they/them', 'they/them/theirs'}),
+    'race': ({'black', 'black or african american', 'black / african american', 'black/african american'},),
+    'hispanic_latino': ({'no', 'not hispanic or latino', 'no, not hispanic or latino'},),
+}
 
 
 def official_job_url(job):
@@ -193,6 +201,8 @@ def prefill_verified_fields(page, job, cfg, later_step=False):
         return []
     verified_cfg = {'profile': {}, 'verified_answers': cfg['verified_answers']}
     remembered = cfg.get('verified_questions', {})
+    hispanic_answers = {str(remembered[question]).strip().casefold()
+                        for question in PERSONAL_DROPDOWNS['hispanic_latino'] if remembered.get(question)}
     candidates = []
     for field in field_metadata(form):
         if (not field['visible'] or field['disabled']
@@ -216,9 +226,10 @@ def prefill_verified_fields(page, job, cfg, later_step=False):
         if page.url != original_url:
             break
         try:
-            labels = {answer.casefold()}
-            if key == 'pronouns':
-                labels = next((group for group in PRONOUN_LABELS if answer.casefold() in group), labels)
+            label = answer.casefold()
+            labels = next((set(group) for group in DROPDOWN_EQUIVALENTS.get(key, ()) if label in group), {label})
+            if key == 'race' and 'black' in labels and hispanic_answers == {'no'}:
+                labels.add('black or african american (not hispanic or latino)')
             if field['type'] == 'select-one' and not node.input_value():
                 options = [option for option in field['options'] if option['value']
                            and option['text'].strip().casefold() in labels]

@@ -56,7 +56,7 @@ For a multi-step form, click **Next** in Edge yourself. After the next step appe
 
 ### Saved dropdown choices
 
-`--prefill-verified` supports verified work authorization and sponsorship answers as well as explicitly saved gender and pronoun choices. To save a personal choice, use `main.py remember "Pronouns" "Prefer not to answer"` with the exact question label and the option you want. The example is a command format. No personal answers are set by default. The agent uses a unique matching option on a supported single-choice dropdown. Common equivalent pronoun labels such as He/Him and He/Him/His count as a match when there is only one eligible option. Consent questions, existing choices, and unmatched fields stay for review.
+`--prefill-verified` supports verified work authorization and sponsorship answers as well as explicitly saved gender, pronouns, race, ethnicity, and residence answers. To save a personal choice, use `main.py remember "Pronouns" "Prefer not to answer"` with the exact question label and the option you want. The example is a command format. No personal answers are set by default. The agent uses a unique matching option on a supported single-choice dropdown. A combined race and ethnicity option requires both facts to be confirmed. Consent questions, existing choices, and unmatched fields stay for review.
 
 ## Sign-in profiles
 

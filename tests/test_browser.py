@@ -335,9 +335,13 @@ class BrowserTest(unittest.TestCase):
             'later': 'Will you require immigration sponsorship at any point in the future to maintain authorization to work in the United States?',
             'gender': 'How do you identify? (gender identity)',
             'pronouns': 'Pronouns',
+            'race': 'Please indicate your race or ethnicity',
+            'ethnicity': 'Are you Hispanic/Latino?',
             'policy': 'Do you accept our privacy policy?',
         }
-        choices = '<option value="">Choose</option><option value="value-1">No</option><option value="value-2">Prefer not to answer</option>'
+        choices = ('<option value="">Choose</option><option value="value-1">No</option>'
+                   '<option value="value-2">Prefer not to answer</option>'
+                   '<option value="value-3">Black or African American (Not Hispanic or Latino)</option>')
         markup = '<form><label>Email<input name="email"></label>' + ''.join(
             f'<label for="{key}">{question}</label><select id="{key}">{choices}</select>'
             for key, question in questions.items()
@@ -349,12 +353,17 @@ class BrowserTest(unittest.TestCase):
             page.goto(url)
             cfg = {**CFG, 'verified_answers': {'needs_sponsorship_now_or_future': False},
                    'verified_questions': {'pronouns': 'Prefer not to answer',
+                                          'please indicate your race or ethnicity': 'Black',
+                                          'are you hispanic/latino': 'No',
                                           'do you accept our privacy policy': 'No'}}
             self.assertEqual(prefill_verified_fields(page, job, cfg),
-                             ['needs_sponsorship_now_or_future', 'needs_sponsorship_now_or_future', 'pronouns'])
+                             ['needs_sponsorship_now_or_future', 'needs_sponsorship_now_or_future',
+                              'pronouns', 'race', 'hispanic_latino'])
             self.assertEqual(page.locator('#now').input_value(), 'value-1')
             self.assertEqual(page.locator('#later').input_value(), 'value-1')
             self.assertEqual(page.locator('#pronouns').input_value(), 'value-2')
+            self.assertEqual(page.locator('#race').input_value(), 'value-3')
+            self.assertEqual(page.locator('#ethnicity').input_value(), 'value-1')
             self.assertEqual(page.locator('#gender').input_value(), '')
             self.assertEqual(page.locator('#policy').input_value(), '')
         finally:
