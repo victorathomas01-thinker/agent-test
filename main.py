@@ -127,7 +127,7 @@ def main():
     review.add_argument('--attach-resume', type=Path,
                         help='Attach this reviewed local resume on the employer page.')
     review.add_argument('--prefill-verified', action='store_true',
-                        help='Enter uniquely matched verified eligibility answers on the live form.')
+                        help='Select verified eligibility and explicitly saved personal dropdown choices.')
     release = commands.add_parser('release-submit', help='Clear a hold after verifying no submission occurred.')
     release.add_argument('job_id')
     setting = commands.add_parser('set')
@@ -280,7 +280,7 @@ def main():
             if args.prefill:
                 print('Prefill will enter saved contact details on this employer’s live page.')
             if args.prefill_verified:
-                print('Prefill will select matching verified eligibility answers on this employer’s live page.')
+                print('Prefill will select matching verified eligibility and explicitly saved gender or pronoun answers on this employer’s live page.')
             attachment = None
             if args.attach_resume is not None:
                 attachment = resume_file({'profile': {'resume_path': str(args.attach_resume.resolve())}})

@@ -325,3 +325,36 @@ class BrowserTest(unittest.TestCase):
             self.assertEqual(requests, ['GET'])
         finally:
             context.close()
+
+    def test_attended_dropdowns_use_explicit_personal_choices_and_distinct_sponsorship_answers(self):
+        url = 'https://job-boards.greenhouse.io/example/jobs/123'
+        job = {'id': 'greenhouse:example:123', 'url': url}
+        questions = {
+            'now': 'Do you require immigration sponsorship to work for Example in the United States?',
+            'later': 'Will you require immigration sponsorship at any point in the future to maintain authorization to work in the United States?',
+            'gender': 'How do you identify? (gender identity)',
+            'pronouns': 'Pronouns',
+            'policy': 'Do you accept our privacy policy?',
+        }
+        choices = '<option value="">Choose</option><option value="value-1">No</option><option value="value-2">Prefer not to answer</option>'
+        markup = '<form><label>Email<input name="email"></label>' + ''.join(
+            f'<label for="{key}">{question}</label><select id="{key}">{choices}</select>'
+            for key, question in questions.items()
+        ) + '</form>'
+        context = self.browser.new_context(offline=True)
+        try:
+            context.route(url, lambda route: route.fulfill(content_type='text/html', body=markup))
+            page = context.new_page()
+            page.goto(url)
+            cfg = {**CFG, 'verified_answers': {'needs_sponsorship_now_or_future': False},
+                   'verified_questions': {'pronouns': 'Prefer not to answer',
+                                          'do you accept our privacy policy': 'No'}}
+            self.assertEqual(prefill_verified_fields(page, job, cfg),
+                             ['needs_sponsorship_now_or_future', 'needs_sponsorship_now_or_future', 'pronouns'])
+            self.assertEqual(page.locator('#now').input_value(), 'value-1')
+            self.assertEqual(page.locator('#later').input_value(), 'value-1')
+            self.assertEqual(page.locator('#pronouns').input_value(), 'value-2')
+            self.assertEqual(page.locator('#gender').input_value(), '')
+            self.assertEqual(page.locator('#policy').input_value(), '')
+        finally:
+            context.close()

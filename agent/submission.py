@@ -5,8 +5,8 @@ from mimetypes import guess_type
 import re
 from urllib.parse import urlsplit
 
-from .browser import FIELDS, IDENTITY_FIELDS, choose_option, field_metadata, find_form_frame, is_resume_field
-from .core import answer_for, record_attempt
+from .browser import FIELDS, IDENTITY_FIELDS, field_metadata, find_form_frame, is_resume_field
+from .core import answer_for, normalize_question, record_attempt
 from .employers import board_from_url
 from .receipts import receipt_fingerprint, record_receipt
 from .sessions import EDGE_CHANNEL, open_profile, posting_scope, requires_sign_in
@@ -17,6 +17,11 @@ CONTACT_FIELDS = {
     'linkedin': {'text', 'url'}, 'github': {'text', 'url'}, 'portfolio': {'text', 'url'},
 }
 VERIFIED_FIELDS = {'work_authorized_us', 'needs_sponsorship_now_or_future', 'over_18', 'willing_to_relocate'}
+PERSONAL_DROPDOWNS = {
+    'gender': {'gender', 'gender identity', 'which gender do you identify as',
+               'what is your gender identity', 'how do you identify? (gender identity)'},
+    'pronouns': {'pronouns', 'preferred pronouns', 'what are your pronouns', 'what pronouns do you use'},
+}
 
 
 def official_job_url(job):
@@ -166,25 +171,35 @@ def prefill_verified_fields(page, job, cfg):
     if form is None:
         return []
     verified_cfg = {'profile': {}, 'verified_answers': cfg['verified_answers']}
+    remembered = cfg.get('verified_questions', {})
     candidates = []
     for field in field_metadata(form):
-        if not field['visible'] or field['disabled']:
+        if (not field['visible'] or field['disabled']
+                or not (field['type'] == 'select-one'
+                        or (field['type'] == 'custom' and field['role'] == 'combobox'))):
             continue
-        answer, key = answer_for(field['label'].strip().rstrip('*'), verified_cfg)
-        if answer is not None and key in VERIFIED_FIELDS:
-            candidates.append((field, key, answer))
-    keys = Counter(key for _, key, _ in candidates)
+        question = normalize_question(field['label'])
+        answer, key = answer_for(question, verified_cfg)
+        if key in VERIFIED_FIELDS:
+            answer = remembered.get(question, answer)
+        else:
+            key = next((name for name, labels in PERSONAL_DROPDOWNS.items() if question in labels), None)
+            answer = remembered.get(question) if key else None
+        if isinstance(answer, str) and answer.strip():
+            candidates.append((field, question, key, answer.strip()))
+    questions = Counter(question for _, question, _, _ in candidates)
     inputs = [(form.locator(FIELDS).nth(field['index']).element_handle(timeout=1500),
-               field, key, answer) for field, key, answer in candidates if keys[key] == 1]
+               field, key, answer) for field, question, key, answer in candidates if questions[question] == 1]
     filled = []
     for node, field, key, answer in inputs:
         if page.url != original_url:
             break
         try:
             if field['type'] == 'select-one' and not node.input_value():
-                value = choose_option(field['options'], answer)
-                if value is not None:
-                    node.select_option(value=value, timeout=1500)
+                options = [option for option in field['options'] if option['value']
+                           and option['text'].strip().casefold() == answer.casefold()]
+                if len(options) == 1:
+                    node.select_option(label=options[0]['text'], timeout=1500)
                     filled.append(key)
             elif field['type'] == 'custom' and field['role'] == 'combobox':
                 if select_verified_combobox(page, node, answer, original_url):
@@ -205,13 +220,15 @@ def select_verified_combobox(page, node, answer, original_url):
         return False
     list_id = page.evaluate('id => CSS.escape(id)', control)
     listbox = page.locator(f'#{list_id}[role="listbox"]:visible')
-    if (listbox.count() != 1 or listbox.get_attribute('aria-multiselectable') == 'true'
-            or listbox.get_by_role('option', selected=True).count()):
+    listbox.wait_for(state='visible', timeout=1500)
+    if listbox.get_attribute('aria-multiselectable') == 'true':
         return False
     options = listbox.get_by_role(
         'option', name=re.compile(r'^' + re.escape(answer) + r'$', re.I)
     )
-    if options.count() != 1 or not options.first.is_enabled():
+    options.first.wait_for(state='visible', timeout=1500)
+    if (listbox.get_by_role('option', selected=True).count() or options.count() != 1
+            or not options.first.is_enabled() or page.url != original_url):
         return False
     options.first.click(timeout=1500)
     return page.url == original_url
