@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agent.browser import apply_to_page, find_form_frame, preview_snapshot
+from agent.rehearsal import rehearse_submission
 
 FIXTURE = Path(__file__).with_name('mock_form.html')
 CFG = {
@@ -129,3 +130,19 @@ class BrowserTest(unittest.TestCase):
             self.assertEqual(frame.locator('input[type=email]').input_value(), '')
         finally:
             page.close()
+
+    def test_rehearsal_confirms_exactly_one_synthetic_post(self):
+        status, detail = rehearse_submission(self.browser)
+        self.assertEqual(status, 'confirmed', detail)
+        self.assertIn('exactly one', detail)
+
+    def test_rehearsal_requires_both_http_success_and_receipt(self):
+        for mode, expected in [('rejected', 'rejected'), ('missing_receipt', 'unconfirmed')]:
+            with self.subTest(mode=mode):
+                status, detail = rehearse_submission(self.browser, response_mode=mode)
+                self.assertEqual(status, expected, detail)
+
+    def test_rehearsal_blocks_when_required_field_is_missing(self):
+        status, detail = rehearse_submission(self.browser, config={'profile': {}, 'verified_answers': {}})
+        self.assertEqual(status, 'blocked', detail)
+        self.assertIn('No simulated POST', detail)

@@ -39,3 +39,7 @@ Use `main.py run` as the entry point for a local scheduled job. It refreshes dis
 After submitting an application yourself, save the employer's confirmation page or email text as a UTF-8 file in the ignored `private` folder. Run `main.py receipt JOB_ID private/confirmation.txt`. The text must contain an explicit receipt message and the listing's employer and title. Some generic receipts omit those details and need to be tracked manually. Use only confirmation text from a source you recognize. The agent checks the text locally and cannot authenticate its origin.
 
 A matching receipt marks the listing `submitted` and removes it from future preview batches. The database stores a fingerprint and the recording time. The receipt contents stay in your file. Reusing the same receipt for another listing is blocked.
+
+## Rehearse submission
+
+Run `main.py rehearse-submit` to exercise the submit button, form POST, and receipt check against an isolated mock employer. It uses synthetic applicant details and checks for a matching confirmation reference after a successful response. Rejections and missing receipts are separate outcomes. The rehearsal works without a local applicant profile, does not contact any website, and does not change the application log. Live employer submissions remain disabled.

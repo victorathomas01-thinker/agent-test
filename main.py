@@ -7,6 +7,7 @@ from pathlib import Path
 from agent import core
 from agent.browser import resume_file, run_browser
 from agent.receipts import record_receipt
+from agent.rehearsal import run_rehearsal
 from agent.resume import write_preview
 
 
@@ -64,6 +65,7 @@ def main():
     receipt = commands.add_parser('receipt', help='Record a locally saved employer confirmation.')
     receipt.add_argument('job_id')
     receipt.add_argument('confirmation', type=Path, help='UTF-8 text copied from the employer confirmation.')
+    commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
     setting = commands.add_parser('set')
     setting.add_argument('key')
     setting.add_argument('value')
@@ -88,6 +90,13 @@ def main():
     args = parser.parse_args()
     if getattr(args, 'live', False):
         parser.error('Live submission is disabled.')
+
+    if args.command == 'rehearse-submit':
+        status, detail = run_rehearsal()
+        print(f'{status} | {detail}')
+        if status != 'confirmed':
+            raise SystemExit(1)
+        return
 
     if args.command == 'init':
         if not core.CONFIG.exists():
