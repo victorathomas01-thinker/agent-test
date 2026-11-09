@@ -3,6 +3,7 @@ import argparse
 from contextlib import closing
 import json
 from pathlib import Path
+import re
 import sys
 
 from agent import core
@@ -10,6 +11,7 @@ from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
 from agent.resume import write_preview
+from agent.sessions import sign_in
 from agent.submission import official_job_url, release_submission, review_submission
 
 
@@ -75,6 +77,9 @@ def print_review_queue(con, limit):
         if job['status'] == 'submission_pending':
             print('  Verify the employer receipt before trying this application again.')
         elif job['status'] == 'needs_review':
+            if job['notes'] == 'Sign-in needed.':
+                print('  Sign-in needed.')
+                continue
             try:
                 items = json.loads(job['notes']).get('unresolved', [])
             except (ValueError, AttributeError, TypeError):
@@ -110,8 +115,13 @@ def main():
     queue = commands.add_parser('queue', help='Show previews and submissions that need your review.')
     queue.add_argument('--limit', type=positive_integer, default=20)
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
+    login = commands.add_parser('sign-in', help='Open a dedicated Indeed browser profile for manual sign-in.')
+    login.add_argument('portal', choices=['indeed'])
+    login.add_argument('--job-key', help='Open a specific Indeed listing after signing in.')
     review = commands.add_parser('review-submit', help='Open one official form for attended submission.')
     review.add_argument('job_id')
+    review.add_argument('--reuse-session', action='store_true',
+                        help='Use a private browser profile for this employer board.')
     review.add_argument('--prefill', action='store_true',
                         help='Enter saved contact details on the live form after you approve the posting.')
     review.add_argument('--attach-resume', type=Path,
@@ -144,6 +154,23 @@ def main():
     args = parser.parse_args()
     if getattr(args, 'live', False):
         parser.error('Live submission is disabled.')
+
+    if args.command == 'sign-in':
+        from playwright.sync_api import Error as PlaywrightError
+
+        if not sys.stdin.isatty():
+            parser.error('Sign-in requires an interactive terminal.')
+        if args.job_key and not re.fullmatch(r'[0-9a-f]{16}', args.job_key, re.I):
+            parser.error('Enter a valid Indeed job key.')
+        url = 'https://www.indeed.com/'
+        if args.job_key:
+            url += f'viewjob?jk={args.job_key}'
+        try:
+            sign_in(args.portal, url)
+        except (EOFError, KeyboardInterrupt, PlaywrightError):
+            parser.error('Sign-in session closed or unavailable. Close any existing profile window and try again.')
+        print('Profile closed. Browser session data stays on this computer.')
+        return
 
     if args.command == 'rehearse-submit':
         status, detail = run_rehearsal()
@@ -264,7 +291,7 @@ def main():
                 parser.error('Job ID did not match.')
             try:
                 outcome = review_submission(con, job, cfg if args.prefill else None, attachment,
-                                            cfg if args.prefill_verified else None)
+                                            cfg if args.prefill_verified else None, args.reuse_session)
             except ValueError as error:
                 parser.error(str(error))
             print('Employer receipt recorded.' if outcome == 'submitted' else

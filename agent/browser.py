@@ -5,6 +5,7 @@ from time import monotonic
 from urllib.parse import urlsplit
 
 from .core import ROOT, add_attempt, answer_for
+from .sessions import requires_sign_in
 
 FIELDS = 'input, textarea, select, [role="combobox"], [role="listbox"], [role="textbox"]'
 SUPPORTED = {'text', 'email', 'tel', 'url', 'number', 'textarea', 'select-one'}
@@ -198,10 +199,14 @@ def preview(url, cfg):
             source = browser.new_context(accept_downloads=False, service_workers='block')
             page = source.new_page()
             response = page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            if requires_sign_in(page):
+                return 'needs_review', 'Sign-in needed.'
             if response is None or not response.ok:
                 return 'needs_review', 'Application page was unavailable.'
             frame = find_form_frame(page)
             if frame is None:
+                if requires_sign_in(page):
+                    return 'needs_review', 'Sign-in needed.'
                 return 'needs_review', 'Could not locate an application form on the page.'
             snapshot = frame.content()
             source.close()

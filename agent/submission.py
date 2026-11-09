@@ -9,6 +9,7 @@ from .browser import FIELDS, IDENTITY_FIELDS, choose_option, field_metadata, fin
 from .core import answer_for, record_attempt
 from .employers import board_from_url
 from .receipts import receipt_fingerprint, record_receipt
+from .sessions import open_profile, posting_scope, requires_sign_in
 
 CONTACT_FIELDS = {
     'first_name': {'text'}, 'last_name': {'text'}, 'full_name': {'text'},
@@ -201,8 +202,13 @@ def select_verified_combobox(page, node, answer, original_url):
     return page.url == original_url
 
 
-def review_page(con, job, page, wait, prefill=None, attachment=None, verified=None):
+def review_page(con, job, page, wait, prefill=None, attachment=None, verified=None, reuse_session=False):
     response = page.goto(job['url'], wait_until='domcontentloaded', timeout=30000)
+    if reuse_session and requires_sign_in(page):
+        wait('Sign in in Chromium, then press Enter here to reopen the approved posting. ')
+        response = page.goto(job['url'], wait_until='domcontentloaded', timeout=30000)
+    if requires_sign_in(page):
+        raise ValueError('Sign-in needed. The submission remains on hold.')
     if response is None or not response.ok or not official_job_url({**dict(job), 'url': page.url}):
         raise ValueError('The official posting could not be opened. The submission remains on hold.')
     if prefill is not None:
@@ -238,12 +244,19 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
     return 'submitted'
 
 
-def review_submission(con, job, prefill=None, attachment=None, verified=None):
+def review_submission(con, job, prefill=None, attachment=None, verified=None, reuse_session=False):
     from playwright.sync_api import Error as PlaywrightError, sync_playwright
 
     reserve_submission(con, job)
     try:
         with sync_playwright() as playwright:
+            if reuse_session:
+                context = open_profile(playwright.chromium, posting_scope(job['url']))
+                try:
+                    page = context.pages[0] if context.pages else context.new_page()
+                    return review_page(con, job, page, input, prefill, attachment, verified, True)
+                finally:
+                    context.close()
             browser = playwright.chromium.launch(headless=False)
             try:
                 context = browser.new_context(accept_downloads=False, service_workers='block')

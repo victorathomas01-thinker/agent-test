@@ -1,6 +1,7 @@
 import json
 from contextlib import closing
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +9,7 @@ from unittest.mock import patch
 from agent import core
 from agent.browser import apply_to_page, find_form_frame, preview_snapshot
 from agent.rehearsal import rehearse_submission
+from agent import sessions
 from agent.submission import (
     attach_reviewed_resume, official_job_url, prefill_contact, prefill_verified_fields,
     release_submission, reserve_submission, review_page,
@@ -22,11 +24,39 @@ CFG = {
 
 
 class BrowserTest(unittest.TestCase):
+    def test_profile_persists_only_within_its_scope(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(sessions, 'ROOT', Path(folder)):
+            chromium = self.playwright.chromium
+            profile = sessions.open_profile(chromium, 'indeed', headless=True)
+            try:
+                profile.add_cookies([{
+                    'name': 'mock_session', 'value': 'synthetic',
+                    'url': 'https://example.invalid', 'expires': int(time.time()) + 3600,
+                }])
+            finally:
+                profile.close()
+            for scope, expected in [('indeed', ['mock_session']), ('lever--example', [])]:
+                profile = sessions.open_profile(chromium, scope, headless=True)
+                try:
+                    self.assertEqual([cookie['name'] for cookie in profile.cookies()], expected)
+                finally:
+                    profile.close()
+
+    def test_visible_login_page_is_detected(self):
+        page = self.browser.new_page()
+        try:
+            page.set_content('<h1>Sign in to continue</h1><input type="password">')
+            self.assertTrue(sessions.requires_sign_in(page))
+            page.set_content('<h1>Apply</h1><input type="password" hidden>')
+            self.assertFalse(sessions.requires_sign_in(page))
+        finally:
+            page.close()
     @classmethod
     def setUpClass(cls):
         from playwright.sync_api import sync_playwright
 
         playwright = sync_playwright().start()
+        cls.playwright = playwright
         cls.addClassCleanup(playwright.stop)
         cls.browser = playwright.chromium.launch(headless=True)
         cls.addClassCleanup(cls.browser.close)
