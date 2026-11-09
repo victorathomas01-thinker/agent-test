@@ -50,7 +50,7 @@ Run `main.py rehearse-submit` to exercise the submit button, form POST, and rece
 
 Attended submission is off by default. To enable it, explicitly set `automation.allow_live_submit` to true in the ignored local config. Run `main.py review-submit JOB_ID` in an interactive terminal and type the exact job ID to open the verified Greenhouse or Lever listing. Optional flags are `--prefill` for saved contact details, `--prefill-verified` for uniquely matched eligibility choices in supported dropdowns, and `--attach-resume PATH` for a reviewed file. These act on the employer's live page and attaching a file can upload it immediately. Existing values and ambiguous fields are left for review. Review, complete, and submit the form yourself in Microsoft Edge, then return to the terminal to check for a receipt. Scheduled runs remain dry-run only.
 
-The agent records a browser receipt only when it observes a successful form POST and an acknowledgment with the employer and role on the same host. An ambiguous result leaves the listing on hold. After checking the employer, use `receipt` to record a saved confirmation or `release-submit JOB_ID` after closing the browser and verifying that nothing was submitted.
+The agent records a browser receipt when it observes a successful same-host form POST and a matching acknowledgment. Greenhouse can identify the listing through its exact job-specific confirmation URL. Other pages must identify the employer and role in the acknowledgment. An ambiguous result leaves the listing on hold. After checking the employer, use `receipt` to record a saved confirmation or `release-submit JOB_ID` after closing the browser and verifying that nothing was submitted.
 
 ## Sign-in profiles
 

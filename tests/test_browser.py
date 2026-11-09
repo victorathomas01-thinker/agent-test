@@ -185,13 +185,14 @@ class BrowserTest(unittest.TestCase):
 
     def test_attended_submission_tracks_only_confirmed_employer_response(self):
         url = 'https://job-boards.greenhouse.io/example/jobs/123'
-        action = 'https://job-boards.greenhouse.io/mock-submit'
         job = dict(id='greenhouse:example:123', url=url, eligible=1,
                    title='Software Engineer', company='Example')
         self.assertTrue(official_job_url(job))
         self.assertFalse(official_job_url({**job, 'url': url.replace('/123', '/456')}))
-        for confirmed in (True, False):
-            with self.subTest(confirmed=confirmed), tempfile.TemporaryDirectory() as folder:
+        for mode in ('named', 'job_specific', 'generic_wrong_route', 'ambiguous'):
+            confirmed = mode in {'named', 'job_specific'}
+            action = url + '/confirmation' if mode == 'job_specific' else 'https://job-boards.greenhouse.io/mock-submit'
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as folder:
                 with patch.object(core, 'DB', Path(folder) / 'agent.sqlite3'), closing(core.connect()) as con:
                     with con:
                         con.execute(
@@ -209,9 +210,13 @@ class BrowserTest(unittest.TestCase):
                                 route.fulfill(content_type='text/html', body=
                                     f'<form method="post" action="{action}"><button>Submit</button></form>')
                             elif request.url == action and request.method == 'POST':
-                                text = ('Thank you for applying to Example for the Software Engineer role.'
-                                        if confirmed else 'Your application status is unavailable.')
-                                route.fulfill(content_type='text/html', body=f'<h1>{text}</h1>')
+                                text = {
+                                    'named': 'Thank you for applying to Example for the Software Engineer role.',
+                                    'job_specific': 'Thank you for applying',
+                                    'generic_wrong_route': 'Thank you for applying',
+                                    'ambiguous': 'Your application status is unavailable.',
+                                }[mode]
+                                route.fulfill(content_type='text/html', body=f'<title>{text}</title><h1>{text}</h1>')
                             else:
                                 route.abort()
 

@@ -70,6 +70,21 @@ def check_confirmation(page, job, initial_url, original_text):
     return text
 
 
+def greenhouse_confirmation(page, job, initial_url):
+    if not job['id'].startswith('greenhouse:'):
+        return False
+    expected = urlsplit(initial_url)
+    current = urlsplit(page.url)
+    if (current.scheme, current.netloc, current.path.rstrip('/')) != (
+        expected.scheme, expected.netloc, expected.path.rstrip('/') + '/confirmation'
+    ):
+        return False
+    acknowledgment = re.compile(r'^thank you for applying[.!]?$', re.I)
+    return bool(acknowledgment.fullmatch(page.title().strip())) or (
+        page.get_by_role('heading', name=acknowledgment).count() == 1
+    )
+
+
 def contact_form(page, job):
     original_url = page.url
     if not official_job_url({**dict(job), 'url': original_url}):
@@ -238,9 +253,15 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
     page.on('response', observe)
     wait('Complete and submit the application yourself in Microsoft Edge. Press Enter here to check for a receipt. ')
     text = check_confirmation(page, job, initial_url, initial)
-    if text is None or not successful_posts:
+    if not successful_posts:
         return 'submission_pending'
-    record_receipt(con, job['id'], text, details='Matched the confirmation shown in the attended browser.')
+    if text is not None:
+        record_receipt(con, job['id'], text, details='Matched the confirmation shown in the attended browser.')
+    elif greenhouse_confirmation(page, job, initial_url):
+        with con:
+            record_attempt(con, job['id'], 'submitted', 'Matched the job-specific Greenhouse confirmation page.')
+    else:
+        return 'submission_pending'
     return 'submitted'
 
 
