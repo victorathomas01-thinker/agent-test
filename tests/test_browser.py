@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent.browser import apply_to_page, preview_snapshot
+from agent.browser import apply_to_page, find_form_frame, preview_snapshot
 
 FIXTURE = Path(__file__).with_name('mock_form.html')
 CFG = {
@@ -73,3 +73,59 @@ class BrowserTest(unittest.TestCase):
     def test_live_is_blocked_even_when_config_enabled(self):
         cfg = {**CFG, 'automation': {'allow_live_submit': True}}
         self.assertEqual(apply_to_page(None, cfg, live=True)[0], 'needs_review')
+
+    def test_verified_radio_group_fills_only_unique_match(self):
+        page = self.browser.new_page(java_script_enabled=False)
+        try:
+            page.set_content("""
+              <form>
+                <label>First Name<input required></label>
+                <label>Email<input type="email" required></label>
+                <fieldset><legend>Are you legally authorized to work in the United States? *</legend>
+                  <label><input type="radio" name="authorization" required>Yes</label>
+                  <label><input type="radio" name="authorization">No</label>
+                </fieldset>
+              </form>
+            """)
+            outcome, details = apply_to_page(page, CFG)
+            self.assertEqual(outcome, 'prepared', details)
+            self.assertTrue(page.get_by_role('radio', name='Yes').is_checked())
+            self.assertFalse(page.get_by_role('radio', name='No').is_checked())
+        finally:
+            page.close()
+
+    def test_custom_control_and_later_step_are_reported_by_label(self):
+        snapshot = """
+          <form>
+            <label>First Name<input required></label>
+            <label>Email<input type="email" required></label>
+            <label id="question">Are you willing to relocate?</label>
+            <input role="combobox" aria-labelledby="question" aria-controls="choices"
+                   aria-required="true">
+            <ul id="choices" role="listbox" hidden><li role="option">Yes</li></ul>
+            <button type="submit">Continue to next page</button>
+          </form>
+        """
+        cfg = {**CFG, 'verified_answers': {'willing_to_relocate': True}}
+        outcome, details = preview_snapshot(self.browser, snapshot, cfg)
+        self.assertEqual(outcome, 'needs_review')
+        review = {item['field']: item['reason'] for item in json.loads(details)['unresolved']}
+        self.assertIn('verified choice available', review['Are you willing to relocate?'])
+        self.assertIn('later application steps', review)
+        self.assertNotIn('willing_to_relocate', json.loads(details)['filled'])
+
+    def test_embedded_form_can_be_copied_and_filled_offline(self):
+        page = self.browser.new_page()
+        try:
+            page.set_content("""
+              <iframe srcdoc='<form><label>First Name<input required></label>
+                <label>Email<input type="email" required></label></form>'></iframe>
+            """)
+            frame = find_form_frame(page)
+            self.assertIsNotNone(frame)
+            self.assertIsNot(frame, page.main_frame)
+            outcome, details = preview_snapshot(self.browser, frame.content(), CFG)
+            self.assertEqual(outcome, 'prepared', details)
+            self.assertEqual(frame.locator('input[type=email]').input_value(), '')
+        finally:
+            page.close()
