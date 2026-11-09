@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 
 from agent import core
-from agent.browser import run_browser
+from agent.browser import resume_file, run_browser
+from agent.resume import write_preview
 
 
 def positive_integer(value):
@@ -36,7 +37,10 @@ def main():
     commands.add_parser('import').add_argument('csv', type=Path)
     apply = commands.add_parser('apply')
     apply.add_argument('job_id')
+    apply.add_argument('--resume', type=Path, help='Use a reviewed local resume for this dry run.')
     apply.add_argument('--live', action='store_true', help=argparse.SUPPRESS)
+    tailor = commands.add_parser('tailor', help='Create a local role-specific resume preview.')
+    tailor.add_argument('job_id')
     batch = commands.add_parser('batch')
     batch.add_argument('--limit', type=positive_integer)
     batch.add_argument('--live', action='store_true', help=argparse.SUPPRESS)
@@ -109,6 +113,20 @@ def main():
         return
 
     with closing(core.connect()) as con:
+        if args.command == 'tailor':
+            job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
+            if job is None:
+                parser.error('Job ID not found.')
+            source = resume_file(cfg)
+            if source is None:
+                parser.error('Set a valid local resume path first.')
+            try:
+                destination, order = write_preview(source, job)
+            except (OSError, ValueError) as error:
+                parser.error(str(error))
+            print(f'Local preview: {destination}')
+            print('Section order: ' + ', '.join(order))
+            return
         if args.command == 'status':
             for row in con.execute('SELECT status, COUNT(*) AS count FROM jobs GROUP BY status'):
                 print(f'{row["status"]} | {row["count"]}')
@@ -127,6 +145,10 @@ def main():
                       f'{row["title"]} | {row["company"]} | {row["location"]} | {row["reason"]}')
             return
         if args.command == 'apply':
+            if args.resume is not None:
+                cfg['profile']['resume_path'] = str(args.resume.resolve())
+                if resume_file(cfg) is None:
+                    parser.error('Select an existing resume file in a supported format.')
             job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
             if job is None:
                 parser.error('Job ID not found.')
