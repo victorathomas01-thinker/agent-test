@@ -6,11 +6,13 @@ from urllib.parse import urlsplit
 from .core import ROOT
 from .employers import board_from_url
 
+EDGE_CHANNEL = 'msedge'
+
 
 def session_dir(scope):
     if not re.fullmatch(r'[a-z0-9_-]+', scope):
         raise ValueError('Invalid browser profile name.')
-    return ROOT / 'private' / 'browser-profiles' / scope
+    return ROOT / 'private' / 'browser-profiles' / 'edge' / scope
 
 
 def posting_scope(url):
@@ -20,9 +22,10 @@ def posting_scope(url):
     return '--'.join(board)
 
 
-def open_profile(chromium, scope, *, headless=False):
+def open_profile(chromium, scope, *, headless=False, channel=EDGE_CHANNEL):
     return chromium.launch_persistent_context(
-        session_dir(scope), headless=headless, accept_downloads=False, service_workers='block',
+        session_dir(scope), channel=channel, headless=headless,
+        accept_downloads=False, service_workers='block',
     )
 
 
@@ -34,7 +37,7 @@ def sign_in(scope, url):
         try:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            input('Sign in in Chromium and complete any verification yourself. Press Enter here when done. ')
+            input('Sign in in Microsoft Edge and complete any verification yourself. Press Enter here when done. ')
         finally:
             context.close()
 

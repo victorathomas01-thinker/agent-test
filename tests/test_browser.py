@@ -27,7 +27,7 @@ class BrowserTest(unittest.TestCase):
     def test_profile_persists_only_within_its_scope(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(sessions, 'ROOT', Path(folder)):
             chromium = self.playwright.chromium
-            profile = sessions.open_profile(chromium, 'indeed', headless=True)
+            profile = sessions.open_profile(chromium, 'indeed', headless=True, channel=None)
             try:
                 profile.add_cookies([{
                     'name': 'mock_session', 'value': 'synthetic',
@@ -36,7 +36,7 @@ class BrowserTest(unittest.TestCase):
             finally:
                 profile.close()
             for scope, expected in [('indeed', ['mock_session']), ('lever--example', [])]:
-                profile = sessions.open_profile(chromium, scope, headless=True)
+                profile = sessions.open_profile(chromium, scope, headless=True, channel=None)
                 try:
                     self.assertEqual([cookie['name'] for cookie in profile.cookies()], expected)
                 finally:

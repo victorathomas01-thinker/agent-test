@@ -9,7 +9,7 @@ from .browser import FIELDS, IDENTITY_FIELDS, choose_option, field_metadata, fin
 from .core import answer_for, record_attempt
 from .employers import board_from_url
 from .receipts import receipt_fingerprint, record_receipt
-from .sessions import open_profile, posting_scope, requires_sign_in
+from .sessions import EDGE_CHANNEL, open_profile, posting_scope, requires_sign_in
 
 CONTACT_FIELDS = {
     'first_name': {'text'}, 'last_name': {'text'}, 'full_name': {'text'},
@@ -205,7 +205,7 @@ def select_verified_combobox(page, node, answer, original_url):
 def review_page(con, job, page, wait, prefill=None, attachment=None, verified=None, reuse_session=False):
     response = page.goto(job['url'], wait_until='domcontentloaded', timeout=30000)
     if reuse_session and requires_sign_in(page):
-        wait('Sign in in Chromium, then press Enter here to reopen the approved posting. ')
+        wait('Sign in in Microsoft Edge, then press Enter here to reopen the approved posting. ')
         response = page.goto(job['url'], wait_until='domcontentloaded', timeout=30000)
     if requires_sign_in(page):
         raise ValueError('Sign-in needed. The submission remains on hold.')
@@ -236,7 +236,7 @@ def review_page(con, job, page, wait, prefill=None, attachment=None, verified=No
             successful_posts.append(True)
 
     page.on('response', observe)
-    wait('Complete and submit the application yourself in Chromium. Press Enter here to check for a receipt. ')
+    wait('Complete and submit the application yourself in Microsoft Edge. Press Enter here to check for a receipt. ')
     text = check_confirmation(page, job, initial_url, initial)
     if text is None or not successful_posts:
         return 'submission_pending'
@@ -257,7 +257,7 @@ def review_submission(con, job, prefill=None, attachment=None, verified=None, re
                     return review_page(con, job, page, input, prefill, attachment, verified, True)
                 finally:
                     context.close()
-            browser = playwright.chromium.launch(headless=False)
+            browser = playwright.chromium.launch(channel=EDGE_CHANNEL, headless=False)
             try:
                 context = browser.new_context(accept_downloads=False, service_workers='block')
                 return review_page(con, job, context.new_page(), input, prefill, attachment, verified)
