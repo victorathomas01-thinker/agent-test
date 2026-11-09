@@ -27,3 +27,9 @@ Keep the local config, database, and resumes out of Git. The tracked example has
 
 Discovery uses the [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html) and [Lever Postings API](https://github.com/lever/postings-api).
 Employer board leads come from [Summer 2027 Internships](https://github.com/SimplifyJobs/Summer2027-Internships) and [New Grad Positions](https://github.com/SimplifyJobs/New-Grad-Positions). The internship feed can be updated in `employer_feeds` when the hiring season changes.
+
+## Unattended dry runs
+
+Use `main.py run` as the entry point for a local scheduled job. It refreshes discovery, previews eligible unprocessed jobs seen in that refresh in a headless browser, and prints a summary. Use `main.py logs` to review attempts.
+
+`run` and `batch` share a default quota of five preview attempts per calendar day on the machine running the agent. Change `max_previews_per_day` in the ignored local config to adjust it. An interrupted or failed attempt uses a slot for that day. A deliberate single-job `apply` preview is separate from the batch quota. All of these commands are dry-run only.

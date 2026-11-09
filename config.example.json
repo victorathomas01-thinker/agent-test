@@ -71,7 +71,8 @@
     "exclude_contract": true,
     "exclude_senior": true,
     "exclude_hard_gpa_over": null,
-    "max_applications_per_run": 10
+    "max_applications_per_run": 10,
+    "max_previews_per_day": 5
   },
   "automation": {
     "headless": true,

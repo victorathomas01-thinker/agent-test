@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import csv, hashlib, html, json, re, sqlite3, urllib.request, urllib.parse
 from tempfile import NamedTemporaryFile
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .employers import board_from_url, find_boards
@@ -41,10 +41,37 @@ def connect():
         reason TEXT DEFAULT '', status TEXT DEFAULT 'found', last_seen TEXT, submitted_at TEXT, notes TEXT DEFAULT '')''')
     con.execute('''CREATE TABLE IF NOT EXISTS attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT,
        at TEXT, outcome TEXT, details TEXT)''')
+    con.execute('''CREATE TABLE IF NOT EXISTS preview_claims (
+       day TEXT NOT NULL, job_id TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (day, job_id))''')
     con.commit()
     return con
 
 def utc_now(): return datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+
+def claim_preview(con, daily_limit, fresh_since=None):
+    """Reserve a batch slot before opening the browser so overlapping runs share the cap."""
+    with con:
+        con.execute('BEGIN IMMEDIATE')
+        day = date.today().isoformat()
+        used = con.execute('SELECT COUNT(*) FROM preview_claims WHERE day=?', (day,)).fetchone()[0]
+        if used >= daily_limit:
+            return None
+
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(timespec='seconds')
+        job = con.execute('''SELECT * FROM jobs AS j
+            WHERE eligible=1 AND status='found'
+              AND (? IS NULL OR (source!='manual' AND last_seen>=?))
+              AND NOT EXISTS (SELECT 1 FROM preview_claims AS c
+                              WHERE c.job_id=j.id AND (c.day=? OR c.at>=?))
+            ORDER BY score DESC, id LIMIT 1''',
+                          (fresh_since, fresh_since, day, recent)).fetchone()
+        if job is not None:
+            con.execute('INSERT INTO preview_claims(day, job_id, at) VALUES (?, ?, ?)',
+                        (day, job['id'], utc_now()))
+        return job
+
+
 def http_json(url):
     req=urllib.request.Request(url,headers={'User-Agent':'PersonalJobAgent/0.1 (personal job discovery)', 'Accept':'application/json'})
     with urllib.request.urlopen(req,timeout=18) as r:

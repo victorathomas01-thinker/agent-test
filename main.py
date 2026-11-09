@@ -16,6 +16,41 @@ def positive_integer(value):
     return number
 
 
+def discover_jobs(cfg):
+    jobs, errors = core.discover(cfg)
+    new = core.store_jobs(jobs, cfg)
+    employers = len({job['id'].rsplit(':', 1)[0] for job in jobs})
+    print(f'Fetched {len(jobs)} listings from {employers} employer boards, {new} new.')
+    for error in errors:
+        print('SOURCE ERROR', error)
+    if errors and not jobs:
+        raise SystemExit(1)
+
+
+def dry_run(job, cfg):
+    outcome, details = run_browser(dict(job), cfg)
+    print(f'{job["id"]} | {outcome} | {details}')
+    return outcome
+
+
+def run_batch(cfg, limit, fresh_since):
+    outcomes = {'prepared': 0, 'needs_review': 0, 'failed': 0}
+    daily_limit = positive_integer(cfg['preferences']['max_previews_per_day'])
+    with closing(core.connect()) as con:
+        core.refresh_eligibility(con, cfg)
+        for _ in range(limit):
+            job = core.claim_preview(con, daily_limit, fresh_since)
+            if job is None:
+                break
+            outcomes[dry_run(job, cfg)] += 1
+    print(f'Batch complete | {sum(outcomes.values())} previews | '
+          + ' | '.join(f'{status}: {count}' for status, count in outcomes.items()))
+    if not any(outcomes.values()):
+        print('No eligible unprocessed listings available within today’s preview quota.')
+    if outcomes['failed']:
+        raise SystemExit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Personal job application agent (dry run only)')
     commands = parser.add_subparsers(dest='command', required=True)
@@ -44,6 +79,8 @@ def main():
     batch = commands.add_parser('batch')
     batch.add_argument('--limit', type=positive_integer)
     batch.add_argument('--live', action='store_true', help=argparse.SUPPRESS)
+    unattended = commands.add_parser('run', help='Discover jobs and preview eligible new listings.')
+    unattended.add_argument('--limit', type=positive_integer)
     args = parser.parse_args()
     if getattr(args, 'live', False):
         parser.error('Live submission is disabled.')
@@ -99,14 +136,16 @@ def main():
         print(f'{len(cfg["verified_questions"])} exact questions remembered.')
         return
     if args.command == 'discover':
-        jobs, errors = core.discover(cfg)
-        new = core.store_jobs(jobs, cfg)
-        employers = len({job['id'].rsplit(':', 1)[0] for job in jobs})
-        print(f'Fetched {len(jobs)} listings from {employers} employer boards, {new} new.')
-        for error in errors:
-            print('SOURCE ERROR', error)
-        if errors and not jobs:
-            raise SystemExit(1)
+        discover_jobs(cfg)
+        return
+    if args.command in {'batch', 'run'}:
+        maximum = positive_integer(cfg['preferences']['max_applications_per_run'])
+        fresh_since = None
+        if args.command == 'run':
+            fresh_since = core.utc_now()
+            discover_jobs(cfg)
+            cfg['automation']['headless'] = True
+        run_batch(cfg, min(args.limit or maximum, maximum), fresh_since)
         return
     if args.command == 'import':
         print(f'Imported {core.import_urls(args.csv, cfg)} new jobs.')
@@ -156,22 +195,7 @@ def main():
                 parser.error('This job was previously submitted.')
             if not job['eligible']:
                 parser.error(job['reason'])
-            jobs = [job]
-        else:
-            maximum = positive_integer(cfg['preferences']['max_applications_per_run'])
-            limit = min(args.limit or maximum, maximum)
-            jobs = list(con.execute(
-                "SELECT * FROM jobs WHERE eligible=1 AND status='found' ORDER BY score DESC, id LIMIT ?",
-                (limit,),
-            ))
-
-    print(f'Processing {len(jobs)} job(s) in dry-run mode.')
-    failed = False
-    for job in jobs:
-        outcome, details = run_browser(dict(job), cfg)
-        print(f'{job["id"]} | {outcome} | {details}')
-        failed |= outcome == 'failed'
-    if failed:
+    if dry_run(job, cfg) == 'failed':
         raise SystemExit(1)
 
 
