@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**New review-only data work:** [Job Market Intelligence](docs/JOB_MARKET_INTELLIGENCE.md) adds read-only SQLite snapshots and private, Power BI-ready CSV exports. It has no live Power BI report yet, does not change application submission, and does not export applicant information.
+
 ## Interactive workbench
 
 Run `main.py serve` and open the printed local URL in Edge. **All Jobs** includes excluded, expired, and unverified records. Filter and export the collection, inspect score explanations, select listings across pages, and click **Prepare selected offline**. A generated offline preview does not transfer entered values into an employer tab.
