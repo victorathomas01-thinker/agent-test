@@ -25,6 +25,118 @@ CFG = {
 
 
 class BrowserTest(unittest.TestCase):
+    def test_approved_batch_fills_multiple_tabs_without_submitting(self):
+        from agent.live_workbench import review_tabs
+        from agent.workbench import select_jobs
+
+        cfg = core.with_defaults({'profile': CFG['profile'], 'verified_answers': CFG['verified_answers'],
+                                  'automation': {'allow_live_submit': True}})
+        jobs = [
+            dict(id=f'greenhouse:example:{i}', source='greenhouse', company='Example',
+                 title='Software Engineer Intern', location='Charlotte', description='Python testing',
+                 url=f'https://job-boards.greenhouse.io/example/jobs/{i}', eligible=1, version='')
+            for i in (123, 124)
+        ]
+        with tempfile.TemporaryDirectory() as folder, patch.object(core, 'DB', Path(folder) / 'db.sqlite3'):
+            core.store_jobs(jobs, cfg)
+            select_jobs([job['id'] for job in jobs], True)
+            context = self.browser.new_context(offline=True)
+            try:
+                requests = []
+
+                def respond(route):
+                    requests.append(route.request.method)
+                    if route.request.method == 'GET':
+                        route.fulfill(content_type='text/html', body=FIXTURE.read_text(encoding='utf-8'))
+                    else:
+                        route.abort()
+
+                context.route('**/*', respond)
+
+                def applicant(_):
+                    self.assertEqual(len(context.pages), 2)
+                    self.assertTrue(all(page.locator('#email').input_value() == 'test@example.invalid'
+                                        for page in context.pages))
+                    return ''
+
+                with redirect_stdout(StringIO()):
+                    review_tabs(jobs, cfg, wait=applicant, context=context)
+                self.assertEqual(requests, ['GET', 'GET'])
+                with closing(core.connect()) as con:
+                    self.assertEqual(con.execute("SELECT COUNT(*) FROM jobs WHERE status='submission_pending'").fetchone()[0], 2)
+            finally:
+                context.close()
+
+    def test_javascript_career_listing_and_dashboard_pagination(self):
+        from threading import Thread
+        from agent.careers import extract
+        from agent.dashboard import server_for
+
+        cfg = core.with_defaults({})
+        page = self.browser.new_page()
+        try:
+            page.set_content("""<div id="results"></div><script>
+            setTimeout(() => document.getElementById('results').innerHTML =
+                '<a href="/jobs/123">IT Support Intern</a>', 30);
+            </script>""")
+            page.locator('#results a').wait_for()
+            _, links = extract(page.content(), 'https://example.invalid/careers', 'Example', core.plain)
+            self.assertIn('https://example.invalid/jobs/123', links)
+            with tempfile.TemporaryDirectory() as folder, patch.object(core, 'DB', Path(folder) / 'db.sqlite3'):
+                with closing(core.connect()) as con, con:
+                    con.executemany('INSERT INTO jobs(id,title,status,eligible,score) VALUES (?,?,?,?,?)', [
+                        (str(i), f'Synthetic job {i:03}', 'expired' if i == 104 else 'found', int(i != 104), 100-i)
+                        for i in range(105)
+                    ])
+                server, _ = server_for(cfg, 0)
+                with server:
+                    worker = Thread(target=server.serve_forever, daemon=True)
+                    worker.start()
+                    try:
+                        page.goto(f'http://127.0.0.1:{server.server_port}/')
+                        page.get_by_text('105 matching', exact=False).wait_for(timeout=7000)
+                        page.locator('#search').fill('Synthetic job 104')
+                        page.get_by_role('heading', name='Synthetic job 104').wait_for()
+                        page.get_by_role('checkbox', name='Select Synthetic job 104').check()
+                        page.get_by_role('button', name='Selected', exact=True).click()
+                        page.get_by_role('heading', name='Synthetic job 104').wait_for()
+                    finally:
+                        server.shutdown()
+                        worker.join()
+        finally:
+            page.close()
+
+    def test_synthetic_discovery_to_dashboard_pipeline(self):
+        import main
+        from agent.operations import run_record, write_dashboard
+
+        cfg = core.with_defaults({'profile': CFG['profile'], 'verified_answers': CFG['verified_answers']})
+        job = {'id': 'greenhouse:example:123', 'source': 'greenhouse', 'company': 'Example',
+               'title': 'Software Engineer Intern', 'location': 'Charlotte',
+               'url': 'https://job-boards.greenhouse.io/example/jobs/123', 'description': 'Python testing'}
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            resume = root / 'resume.txt'
+            resume.write_text('Synthetic Applicant\n\nSkills\nPython testing\n\nProjects\nBuilt a testing tool\n', encoding='utf-8')
+            cfg['profile']['resume_path'] = str(resume)
+
+            def mock_browser(listing, profile):
+                outcome, details = preview_snapshot(self.browser, FIXTURE.read_text(encoding='utf-8'), profile)
+                core.add_attempt(listing['id'], outcome, details)
+                return outcome, details
+
+            with (patch.object(core, 'ROOT', root), patch.object(core, 'DB', root / 'agent.sqlite3'),
+                  patch.object(core, 'discover', return_value=([job], [])),
+                  patch.object(main, 'run_browser', side_effect=mock_browser), redirect_stdout(StringIO())):
+                with run_record() as summary:
+                    main.discover_jobs(cfg, summary)
+                    main.run_batch(cfg, 1, '2000-01-01', summary)
+                with closing(core.connect()) as con:
+                    self.assertEqual(con.execute('SELECT status FROM jobs').fetchone()[0], 'prepared')
+                    self.assertEqual(con.execute('SELECT status FROM runs').fetchone()[0], 'complete')
+                    self.assertEqual(con.execute('SELECT COUNT(*) FROM packages').fetchone()[0], 1)
+                    self.assertIn('Software Engineer Intern', write_dashboard(con, cfg).read_text(encoding='utf-8'))
+
     def test_profile_persists_only_within_its_scope(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(sessions, 'ROOT', Path(folder)):
             chromium = self.playwright.chromium

@@ -21,6 +21,11 @@ def board_from_url(url):
             r'/([a-zA-Z0-9_-]+)/[a-fA-F0-9-]{36}(?:/apply)?/?', address.path
         )
         return ('lever', match[1].lower()) if match else None
+    if address.netloc == 'jobs.ashbyhq.com':
+        match = re.fullmatch(
+            r'/([a-zA-Z0-9_-]+)/[a-fA-F0-9-]{36}(?:/application)?/?', address.path
+        )
+        return ('ashby', match[1].lower()) if match else None
     return None
 
 
