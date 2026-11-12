@@ -2,6 +2,18 @@
 
 Discover jobs from public Greenhouse and Lever boards, filter and rank them, and rehearse filling application forms locally. Automatic submission is disabled. In a dry run the agent opens the posting without applicant data, then fills a disconnected copy with site scripts disabled.
 
+## Project overview for reviewers
+
+**Stack:** Python, SQLite, Playwright, REST APIs (Greenhouse and Lever), Microsoft Edge, HTML form analysis, unittest, GitHub Actions.
+
+**Problem:** Finding entry-level roles is fragmented across dozens of applicant-tracking systems, and applying often requires repetitive, error-prone data entry.
+
+**What the default branch implements:** Imports and deduplicates public listings, filters by applicant eligibility/preferences, keeps a local application history, and rehearses supported form interactions against disconnected copies. It can also provide an **explicitly attended** Edge review flow. Scheduled runs do not submit applications.
+
+**Engineering considerations:** Respect for authentication/CAPTCHA boundaries, separation of public listings from private applicant information, conservative form handling, reviewable outcomes, and no claim of submission without a verified receipt.
+
+**Current status:** Local prototype. The [draft integration PR #3](https://github.com/victorathomas01-thinker/agent-test/pull/3) contains a larger explainable ranking and dashboard/workbench implementation, but **it is not yet merged or demonstrated as a reliable live application submitter**. The project is not a hosted job-search service.
+
 ## Windows setup
 
 With Python 3.11 or later installed, run `pwsh -File setup.ps1` in the repository folder. This installs Playwright and Chromium, creates the local profile and database, and runs the tests. Setup imports the existing MVP configuration from Downloads when present. For an MVP installed elsewhere, run `python main.py init --from-mvp PATH_TO_CONFIG` before setup.
