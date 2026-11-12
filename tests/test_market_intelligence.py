@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from contextlib import closing
 
 from agent.market_intelligence import (
     export_csvs, require_private, snapshot, source_connection, utc_stamp,
@@ -91,7 +92,7 @@ class MarketIntelligenceTests(unittest.TestCase):
             self.assertEqual(sum(int(row["salary_disclosed"]) for row in records), 2)
             self.assertEqual(len({row["posting_key"] for row in records}), 2)
 
-            with sqlite3.connect(warehouse) as con:
+            with closing(sqlite3.connect(warehouse)) as con:
                 self.assertEqual(con.execute("SELECT COUNT(*) FROM market_category_summary").fetchone()[0], 4)
                 self.assertEqual(con.execute("SELECT COUNT(*) FROM market_first_collected").fetchone()[0], 2)
                 self.assertEqual(con.execute("SELECT COUNT(*) FROM market_observations").fetchone()[0], 4)
@@ -104,7 +105,7 @@ class MarketIntelligenceTests(unittest.TestCase):
                 source_connection(missing)
             self.assertFalse(missing.exists())
             invalid = folder / "wrong.sqlite3"
-            with sqlite3.connect(invalid) as con:
+            with closing(sqlite3.connect(invalid)) as con:
                 con.execute("CREATE TABLE other (x INTEGER)")
             destination = folder / "warehouse.sqlite3"
             with self.assertRaisesRegex(ValueError, "required job tables"):
