@@ -23,7 +23,7 @@ Do not describe this as an autonomous end-to-end application submitter. The deve
 - [ ] Run the full tests on the combined PR head and review results.
 - [ ] Test a fresh local install using entirely synthetic config, resumes and application records.
 - [ ] Confirm private profile, resume, local SQLite DB, credentials, and confirmation email content are never committed or copied to a public artifact.
-- [ ] Compare queue contents and eligibility filtering against saved fixtures, including 2.79 GPA hard limits and December 2027 graduation eligibility (private values belong in local configuration only).
+- [ ] Compare queue contents and eligibility filtering against saved fixtures, including hard GPA thresholds and graduation-window eligibility, using only verified **private local configuration** (do not include applicant-specific values in public files).
 - [ ] Validate deduplication after repeat imports and canonical URL changes.
 - [ ] Verify the dashboard shows all listings, exclusions and reasons, and that state persists after a restart.
 - [ ] Complete a synthetic browser rehearsal with **zero real employer submissions**.
