@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**One real form, read-only (review-only):** [Lever/Zoox form structure observation](docs/LIVE_FORM_STRUCTURE_2026-11-12.md) measured 34 visible and 13 required controls, including 8 required checkboxes. The run entered no answers and submitted nothing; new checkbox diagnostics keep those choices for explicit review.
+
 **Live public-source results (review-only):** [November 12 source check](docs/LIVE_SOURCE_CHECK_2026-11-12.md) covers real Workday, Lever and Greenhouse API behavior, with tightly capped public reads and no application submissions. It also explains the approved Duolingo custom careers-host rule. This is not proof that any posting remains open.
 
 **Public-posting requirement checks (review-only):** [Source-derived qualification wording regression](docs/PUBLIC_REQUIREMENT_WORDING.md) covers hard GPA, preferred graduation dates, internship-history requirements, and relative date windows. These examples are not representative employer eligibility accuracy measurements.
