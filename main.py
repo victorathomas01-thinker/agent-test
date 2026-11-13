@@ -12,6 +12,7 @@ from agent import source_health
 from agent import form_diagnostics
 from agent import pilot_audit
 from agent import local_safety
+from agent import posting_freshness
 from agent import requirement_benchmark
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
@@ -176,6 +177,7 @@ def main():
     coverage_cmd.add_argument('--limit', type=positive_integer, default=50)
     form_audit = commands.add_parser('form-audit', help='Summarize unresolved offline form blockers.')
     form_audit.add_argument('--limit', type=positive_integer, default=500)
+    commands.add_parser('posting-audit', help='Summarize deadlines and stale sources without applicant details.')
     historical = commands.add_parser('pilot-audit',
         help='Analyze historical offline attempts from an existing local database, read-only.')
     historical.add_argument('--database', type=Path, default=core.DB)
@@ -397,6 +399,15 @@ def main():
     if args.command == 'form-audit':
         form_diagnostics.print_report(min(args.limit, 5000))
         return
+    if args.command == 'posting-audit':
+        with closing(core.connect()) as con:
+            totals = posting_freshness.aggregate(con)
+        print('Unsubmitted job records:', totals['active_or_unconfirmed'])
+        print('Explicitly passed deadline, recheck required:', totals['passed_deadline'])
+        print('Source not seen in over 14 days:', totals['stale_source'])
+        print('Conflicting explicit closing dates:', totals['conflicting_deadline'])
+        print('These are review warnings, not independently verified job closures.')
+        return
     if args.command == 'discover-workday':
         if args.max_sites > 50 or args.per_site > 60:
             parser.error('At most 50 Workday sites and 60 listings per site are supported.')
@@ -479,7 +490,9 @@ def main():
         if args.command == 'explain':
             row = con.execute("""SELECT j.*, COALESCE(d.workplace,'') AS workplace,
                                  COALESCE(d.employment_type,'') AS employment_type, d.salary, d.published_at
-                                 FROM jobs j LEFT JOIN job_details d ON d.job_id=j.id WHERE j.id=?""",
+                                 , COALESCE(w.deadline,'') AS deadline, w.verification
+                                 FROM jobs j LEFT JOIN job_details d ON d.job_id=j.id
+                                 LEFT JOIN web_checks w ON w.job_id=j.id WHERE j.id=?""",
                               (args.job_id,)).fetchone()
             if row is None:
                 parser.error('Job ID not found.')
@@ -512,9 +525,13 @@ def main():
             print(write_dashboard(con, cfg))
             return
         if args.command == 'package':
-            job = con.execute('SELECT * FROM jobs WHERE id=?', (args.job_id,)).fetchone()
+            job = con.execute("""SELECT j.*, COALESCE(w.deadline,'') AS deadline
+                                 FROM jobs j LEFT JOIN web_checks w ON w.job_id=j.id
+                                 WHERE j.id=?""", (args.job_id,)).fetchone()
             if job is None:
                 parser.error('Job ID not found.')
+            if job['status'] == 'expired' or posting_freshness.risk_reasons(dict(job)):
+                parser.error('Posting deadline or freshness needs verification before creating a new package.')
             try:
                 print(package_for(con, job, cfg, args.cover_letter))
             except (OSError, ValueError) as error:
