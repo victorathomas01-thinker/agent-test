@@ -43,8 +43,7 @@ class EligibilityPrecisionTest(unittest.TestCase):
 
     def test_decimal_gpa_is_not_split_or_rounded(self):
         self.assertIn("3.5", str(qualifications(
-            "The minimum GPA is 3.5.", self.PROFILE, 3.49))
-            if False else str(qualifications("Minimum GPA of 3.5.", self.PROFILE, 3.49)))
+            "Minimum GPA of 3.5.", self.PROFILE, 3.49)))
         self.assertEqual(qualifications("Minimum GPA of 3.5.", self.PROFILE, 3.5), [])
 
     def test_explicit_graduation_latest_cutoff(self):
