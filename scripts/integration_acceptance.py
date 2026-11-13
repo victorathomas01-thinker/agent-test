@@ -81,7 +81,7 @@ def seed(db):
             )
             con.execute(
                 "INSERT INTO web_checks(job_id,verification,deadline) VALUES (?,?,?)",
-                (identifier, "api_listing", ""),
+                (identifier, "api_listing", "2020-10-01" if index == 0 else ""),
             )
             # Include two attempts on the first job to check the most recent
             # history is chosen, not the highest number of rows per employer.
@@ -117,7 +117,7 @@ def seed(db):
         con.execute(
             """INSERT INTO verified_facts(key,value,source,scope,verified_at,active)
                VALUES ('synthetic_private','' || ?, 'test', 'local', ?,1)""",
-            (SENTINEL, DAY),
+            (json.dumps(SENTINEL), DAY),
         )
 
 
@@ -251,6 +251,12 @@ def main():
             raise AssertionError("Private backup omitted or altered local agent records.")
         if hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
             raise AssertionError("Backup changed the original local database.")
+        audit = run(app, "main.py", "posting-audit")
+        if hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
+            raise AssertionError("Read-only posting audit unexpectedly modified the source database.")
+        if ("Unsubmitted job records: 20" not in audit
+                or "Explicitly passed deadline, recheck required: 1" not in audit):
+            raise AssertionError("Posting readiness report did not identify the saved expired cutoff.")
         output = run(app, "main.py", "pilot-audit", "--since", DAY,
                      "--through", DAY, "--offline-only",
                      "--limit", "20", "--expected", "20")
@@ -276,6 +282,7 @@ def main():
         if count != 22:
             raise AssertionError("Historical applicant attempts changed during acceptance.")
         print("PASS — read-only doctor, safe config gate, and private verified SQLite snapshots")
+        print("PASS — persisted deadline and source-age review report; zero private data")
         print("PASS — isolated clean CLI init and live-submit safeguard")
         print("PASS — 20-job synthetic historical pilot audit; read-only source unchanged")
         print("PASS — 28 fictional-profile public requirement fixtures")

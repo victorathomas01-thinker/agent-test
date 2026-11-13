@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .browser import FIELDS, IDENTITY_FIELDS, field_metadata, find_form_frame, is_resume_field
 from .core import answer_for, canonical_url, normalize_question, record_attempt
+from .posting_freshness import risk_reasons, observation_day
 from .employers import board_from_url
 from .receipts import receipt_fingerprint, record_receipt
 from .sessions import EDGE_CHANNEL, open_profile, posting_scope, requires_sign_in
@@ -60,11 +61,19 @@ def reserve_submission(con, job):
         raise ValueError('Attended submission requires an eligible, direct Greenhouse or Lever listing.')
     with con:
         con.execute('BEGIN IMMEDIATE')
-        current = con.execute('SELECT status, url, eligible, submitted_at FROM jobs WHERE id=?', (job['id'],)).fetchone()
+        current = con.execute("""SELECT j.*, COALESCE(w.deadline,'') AS deadline
+                                 FROM jobs j LEFT JOIN web_checks w ON w.job_id=j.id
+                                 WHERE j.id=?""", (job['id'],)).fetchone()
         if current is None or current['url'] != job['url'] or not current['eligible']:
             raise ValueError('The listing changed. Review it again before proceeding.')
+        if current['status'] in {'expired','rejected','withdrawn','offer','assessment','interview'}:
+            raise ValueError('This record is closed or already tracked. Do not reopen the application.')
         if current['submitted_at'] or current['status'] in {'submitted', 'submission_pending'}:
             raise ValueError('This job was submitted or has an unresolved submission. Check the employer first.')
+        if current['source'] in {'greenhouse', 'lever'} and observation_day(current['last_seen']) is None:
+            raise ValueError('Listing has no dated public-source observation. Rediscover it first.')
+        if risk_reasons(dict(current)):
+            raise ValueError('Application deadline or listing freshness needs employer re-verification.')
         identity = canonical_url(job['url'])
         prior = con.execute("""SELECT url FROM jobs WHERE id!=?
                             AND (submitted_at IS NOT NULL OR status IN ('submitted', 'submission_pending'))""",
