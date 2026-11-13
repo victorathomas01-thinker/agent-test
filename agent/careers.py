@@ -197,7 +197,7 @@ def crawl_careers(seed, budget, plain, fetch=read_public, render=None):
     return list(jobs.values())
 
 
-def discover_sites(seeds, budget, plain):
+def discover_sites(seeds, budget, plain, report=None):
     from contextlib import ExitStack
     from playwright.sync_api import Error as BrowserError, sync_playwright
 
@@ -220,11 +220,30 @@ def discover_sites(seeds, budget, plain):
                 page.close()
 
         for seed in seeds:
+            raw_url = seed.get('url', '') if isinstance(seed, dict) else ''
+            key = 'site:' + hashlib.sha256(str(raw_url).encode('utf-8')).hexdigest()[:16]
             try:
                 postings = crawl_careers(seed, budget, plain, render=render if browser else None)
                 jobs.extend(postings)
                 if not postings:
+                    status, detail = 'empty', 'no_extractable_postings; not_verified_empty_market'
                     errors.append(f'{seed["company"]}: no postings could be extracted from the configured page.')
+                else:
+                    status = 'partial'
+                    detail = ('unverified_posting_links' if any(
+                        job.get('verification') != 'structured' for job in postings)
+                        else 'bounded_crawl; no_completeness_proof')
+                if report is not None:
+                    report.append(dict(kind='employer_site', key=key, status=status,
+                                       records=len(postings), detail=detail))
             except (OSError, ValueError, KeyError, TypeError, BrowserError) as error:
-                errors.append(f'{seed.get("company", "Career site")}: {error}')
+                if report is not None:
+                    message = str(error).casefold()
+                    blocked = ('robots.txt' in message or 'http error 403' in message
+                               or 'disallowed' in message)
+                    report.append(dict(kind='employer_site', key=key,
+                                       status='blocked' if blocked else 'error',
+                                       records=0, detail=type(error).__name__))
+                label = seed.get('company', 'Career site') if isinstance(seed, dict) else 'Career site'
+                errors.append(f'{label}: {error}')
     return jobs, errors

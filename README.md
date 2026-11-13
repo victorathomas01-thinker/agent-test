@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**Discovery audit (review branch):** [Source coverage and public ATS paging](docs/DISCOVERY_COVERAGE.md) adds `python main.py coverage`, source-level checks, and paginated SmartRecruiters reads. A failed or capped source is never evidence that its older vacancies have closed.
+
 **New review-only data work:** [Job Market Intelligence](docs/JOB_MARKET_INTELLIGENCE.md) adds read-only SQLite snapshots and private, Power BI-ready CSV exports. It has no live Power BI report yet, does not change application submission, and does not export applicant information.
 
 ## Interactive workbench

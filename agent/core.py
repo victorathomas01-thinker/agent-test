@@ -129,9 +129,14 @@ def plain(s):
     s = re.sub(r'<[^>]+>', ' ', html.unescape(s or ''))
     return re.sub(r'\s+', ' ', s).strip()
 
-def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None):
+def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None, audit=None):
+    if not isinstance(maximum, int) or maximum < 1:
+        raise ValueError('Posting cap must be positive.')
     if provider == 'smartrecruiters':
-        return list(smartrecruiters_jobs(slug, company, maximum, http_json, plain))
+        jobs = smartrecruiters_jobs(slug, company, maximum, http_json, plain, audit)
+        if coverage is not None and audit is not None and audit.get('complete'):
+            coverage.append((provider, slug))
+        return jobs
     token = urllib.parse.quote(slug, safe='')
     if provider == 'greenhouse':
         data = http_json(f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true')
@@ -143,9 +148,14 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
     else:
         raise ValueError('Unknown posting provider.')
 
+    if not isinstance(postings, list):
+        raise ValueError('Posting API did not return a list.')
     jobs = []
-    complete = len(postings) <= maximum
+    complete = len(postings) < maximum
     for posting in postings[:maximum]:
+        if not isinstance(posting, dict):
+            complete = False
+            continue
         details = {}
         if provider == 'greenhouse':
             title = posting.get('title', '')
@@ -169,7 +179,9 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
             details = {'published_at': posting.get('publishedAt'), 'workplace': posting.get('workplaceType'),
                        'employment_type': posting.get('employmentType'),
                        'salary': (posting.get('compensation') or {}).get('scrapeableCompensationSalarySummary')}
-        if (discovered or provider == 'ashby') and board_from_url(url) != (provider, slug.lower()):
+        if board_from_url(url) != (provider, slug.lower()):
+            # Never import another organization's posting or assert completeness
+            # when the source could not be verified.
             complete = False
             continue
         identifier = (urllib.parse.urlsplit(url).path.rstrip('/').removesuffix('/application').rsplit('/', 1)[-1]
@@ -184,6 +196,9 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
             'description': plain(description),
             **{key: value or '' for key, value in details.items()},
         })
+    if audit is not None:
+        audit.update(complete=complete, returned=len(jobs), total=len(postings),
+                     reason='all_public_listings' if complete else 'capped_or_invalid_listing')
     if coverage is not None and complete:
         coverage.append((provider, slug))
     return jobs
@@ -206,7 +221,7 @@ def discovery_rank(listing, cfg):
     return max(map(match, locations or ['']))
 
 
-def discover(cfg, coverage=None):
+def discover(cfg, coverage=None, source_checks=None):
     discovery = cfg['discovery']
     configured = [
         ('greenhouse', slug, slug) for slug in discovery['greenhouse_boards']
@@ -224,29 +239,41 @@ def discover(cfg, coverage=None):
         max(0, discovery.get('max_discovered_boards', 0)),
         http_json,
         lambda listing: discovery_rank(listing, cfg),
+        source_checks,
     )
     sources = list(dict.fromkeys(configured)) + [(provider, slug, slug) for provider, slug in found]
     discovered = set(found)
 
     def fetch(source):
         provider, slug, company = source
-        completed = []
+        completed, audit = [], {}
+        key = f'{provider}:{slug}'
         try:
-            return fetch_board(provider, slug, company, discovery['max_per_source'],
-                               (provider, slug) in discovered, completed), None, completed
+            postings = fetch_board(provider, slug, company, discovery['max_per_source'],
+                                   (provider, slug) in discovered, completed, audit)
+            status = ('empty' if not postings else 'complete') if audit.get('complete') else 'partial'
+            source_check = dict(kind='ats', key=key, status=status, records=len(postings),
+                                detail=audit.get('reason', 'coverage_unknown'))
+            return postings, None, completed, source_check
         except (OSError, ValueError, KeyError, TypeError) as error:
-            return [], f'{provider} {slug}: {error}', []
+            source_check = dict(kind='ats', key=key, status='error', records=0,
+                                detail=type(error).__name__)
+            return [], f'{provider} {slug}: {error}', [], source_check
 
     jobs = []
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for postings, error, completed in pool.map(fetch, sources):
+        for postings, error, completed, source_check in pool.map(fetch, sources):
             jobs.extend(postings)
             if coverage is not None:
                 coverage.extend(completed)
+            if source_checks is not None:
+                source_checks.append(source_check)
             if error:
                 errors.append(error)
     if discovery.get('career_sites'):
-        postings, problems = discover_sites(discovery['career_sites'], discovery.get('career_page_budget', 10), plain)
+        postings, problems = discover_sites(discovery['career_sites'],
+                                            discovery.get('career_page_budget', 10),
+                                            plain, report=source_checks)
         jobs.extend(postings)
         errors.extend(problems)
     return jobs, errors
