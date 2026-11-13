@@ -1,0 +1,27 @@
+name: One-time public Lever exact posting verification
+
+# Explicit path-gated source validation only. No schedule, no PR event.
+on:
+  push:
+    branches:
+      - feature/lever-live-check-and-review-queue-2026-11-13
+    paths:
+      - .github/workflows/one-time-lever-single-posting.yml
+
+permissions:
+  contents: read
+
+jobs:
+  one-off-source-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Two bounded public GETs and a disposable synthetic database only
+        run: python -m scripts.probe_lever_single_recheck
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONUNBUFFERED: '1'
