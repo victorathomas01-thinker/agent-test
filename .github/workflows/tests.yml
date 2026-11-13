@@ -18,6 +18,13 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m playwright install chromium
       - run: python -m unittest discover -s tests
+      - name: Windows beta install preflight only (no packages, database, or employers)
+        shell: pwsh
+        run: |
+          .\setup.ps1 -PreflightOnly
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'Beta read-only preflight failed.' }
+          if (Test-Path -LiteralPath .\agent.sqlite3) { throw 'Read-only setup preflight created a database.' }
+          if (Test-Path -LiteralPath .\config.json) { throw 'Read-only setup preflight created a config.' }
       - name: Isolated end-to-end acceptance (never contacts employers)
         run: python -m scripts.integration_acceptance
       - run: python main.py rehearse-submit
