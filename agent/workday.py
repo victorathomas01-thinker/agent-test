@@ -153,6 +153,10 @@ def read_workday_jobs(board_url, company, maximum, *,
                     total = count
                 else:
                     complete = False
+            if total is not None and offset + len(rows) > total:
+                # Some tenants report misleading totals. Never treat a page
+                # larger than the declared inventory as exhaustive proof.
+                complete = False
             if not rows:
                 if total is None or offset < total:
                     complete = False

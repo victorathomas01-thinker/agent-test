@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**Public-posting requirement checks (review-only):** [Source-derived qualification wording regression](docs/PUBLIC_REQUIREMENT_WORDING.md) covers hard GPA, preferred graduation dates, internship-history requirements, and relative date windows. These examples are not representative employer eligibility accuracy measurements.
+
 **New optional Workday provider (review-only):** [Public Workday discovery guide](docs/WORKDAY_PUBLIC_DISCOVERY.md). A curated, opt-in Charlotte-area employer source bank can be explored with `python main.py discover-workday --max-sites 3 --per-site 15`. It does not enable live applications, change scheduled scans, or imply any posting is still open.
 
 **Offline form diagnostics (review branch):** [Form Readiness report](docs/FORM_AUDIT.md) adds `python main.py form-audit` and a local dashboard view grouping unresolved required fields. It does not submit applications or expose applicant answers.
