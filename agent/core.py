@@ -129,9 +129,14 @@ def plain(s):
     s = re.sub(r'<[^>]+>', ' ', html.unescape(s or ''))
     return re.sub(r'\s+', ' ', s).strip()
 
-def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None):
+def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None, audit=None):
+    if not isinstance(maximum, int) or maximum < 1:
+        raise ValueError('Posting cap must be positive.')
     if provider == 'smartrecruiters':
-        return list(smartrecruiters_jobs(slug, company, maximum, http_json, plain))
+        jobs = smartrecruiters_jobs(slug, company, maximum, http_json, plain, audit)
+        if coverage is not None and audit is not None and audit.get('complete'):
+            coverage.append((provider, slug))
+        return jobs
     token = urllib.parse.quote(slug, safe='')
     if provider == 'greenhouse':
         data = http_json(f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true')
@@ -143,9 +148,14 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
     else:
         raise ValueError('Unknown posting provider.')
 
+    if not isinstance(postings, list):
+        raise ValueError('Posting API did not return a list.')
     jobs = []
-    complete = len(postings) <= maximum
+    complete = len(postings) < maximum
     for posting in postings[:maximum]:
+        if not isinstance(posting, dict):
+            complete = False
+            continue
         details = {}
         if provider == 'greenhouse':
             title = posting.get('title', '')
@@ -169,7 +179,9 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
             details = {'published_at': posting.get('publishedAt'), 'workplace': posting.get('workplaceType'),
                        'employment_type': posting.get('employmentType'),
                        'salary': (posting.get('compensation') or {}).get('scrapeableCompensationSalarySummary')}
-        if (discovered or provider == 'ashby') and board_from_url(url) != (provider, slug.lower()):
+        if board_from_url(url) != (provider, slug.lower()):
+            # Never import another organization's posting or assert completeness
+            # when the source could not be verified.
             complete = False
             continue
         identifier = (urllib.parse.urlsplit(url).path.rstrip('/').removesuffix('/application').rsplit('/', 1)[-1]
@@ -184,6 +196,9 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
             'description': plain(description),
             **{key: value or '' for key, value in details.items()},
         })
+    if audit is not None:
+        audit.update(complete=complete, returned=len(jobs), total=len(postings),
+                     reason='all_public_listings' if complete else 'capped_or_invalid_listing')
     if coverage is not None and complete:
         coverage.append((provider, slug))
     return jobs
