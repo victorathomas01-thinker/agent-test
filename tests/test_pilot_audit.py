@@ -88,6 +88,27 @@ class PilotAuditTests(unittest.TestCase):
             self.assertEqual(report["dry_run_previews"], 0)
             self.assertEqual(report["nonjson_failure_categories"], {"login_required": 1})
 
+    def test_offline_only_reconstructs_previews_before_later_signin(self):
+        with tempfile.TemporaryDirectory() as temp:
+            db = Path(temp) / "pilot.sqlite3"
+            fixture(db)
+            with closing(pilot_audit.open_readonly(db)) as con:
+                latest = pilot_audit.selected_attempts(con, limit=20)
+                offline = pilot_audit.selected_attempts(
+                    con, limit=20, offline_only=True)
+                later_only = pilot_audit.selected_attempts(
+                    con, since="2026-11-13", through="2026-11-13",
+                    offline_only=True)
+            self.assertEqual(len(latest), 2)
+            self.assertEqual(latest[0]["details"], "Sign-in needed.")
+            self.assertEqual(len(offline), 2)
+            self.assertTrue(all(
+                json.loads(row["details"])["mode"] == "dry-run" for row in offline))
+            self.assertEqual(later_only, [])
+            report = pilot_audit.summarize(offline, expected=2)
+            self.assertEqual(report["dry_run_previews"], 2)
+            self.assertEqual(report["offline_current_step_prepared"], 1)
+
     def test_unscoped_sample_is_not_automatically_the_prior_pilot(self):
         with tempfile.TemporaryDirectory() as temp:
             db = Path(temp) / "pilot.sqlite3"
