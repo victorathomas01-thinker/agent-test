@@ -1,0 +1,31 @@
+name: One-time read-only Greenhouse form structure observation
+
+# Explicit one-time review branch/path trigger, no schedule or PR trigger.
+on:
+  push:
+    branches:
+      - feature/public-form-readiness-2026-11-13
+    paths:
+      - .github/workflows/one-time-greenhouse-form-structure.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-one-public-greenhouse-form:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install bounded browser dependency
+        run: |
+          python -m pip install playwright==1.64.1
+          python -m playwright install --with-deps chromium
+      - name: Inspect a single public form without inputs, uploads or POST
+        run: python -m scripts.probe_greenhouse_public_form
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONUNBUFFERED: '1'

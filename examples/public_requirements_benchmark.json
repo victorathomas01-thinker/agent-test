@@ -1,0 +1,342 @@
+{
+  "description": "Manually annotated and paraphrased short requirement excerpts from public employer postings. Synthetic applicant profiles; source sample is intentionally not representative.",
+  "as_of": "2026-11-12",
+  "cases": [
+    {
+      "id": "case-01",
+      "source": "tiaa",
+      "source_url": "https://tiaa.wd1.myworkdayjobs.com/en-US/Search/job/XMLNAME-2027-Early-Talent-Internship--Technology_R261000111",
+      "requirements": "Additional Requirements: Minimum 3.0 GPA required.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 2.6
+      },
+      "expected": "hard_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-02",
+      "source": "tiaa",
+      "source_url": "https://tiaa.wd1.myworkdayjobs.com/en-US/Search/job/XMLNAME-2027-Early-Talent-Internship--Technology_R261000111",
+      "requirements": "Additional Requirements: Minimum 3.0 GPA required.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.2
+      },
+      "expected": "no_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-03",
+      "source": "tiaa",
+      "source_url": "https://tiaa.wd1.myworkdayjobs.com/en-US/Search/job/XMLNAME-2027-Early-Talent-Internship--Technology_R261000111",
+      "requirements": "Additional Requirements: Expected graduation date between December 2027– June 2029.",
+      "synthetic_profile": {
+        "graduation": "November 2027",
+        "gpa": 3.5
+      },
+      "expected": "hard_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-04",
+      "source": "tiaa",
+      "source_url": "https://tiaa.wd1.myworkdayjobs.com/en-US/Search/job/XMLNAME-2027-Early-Talent-Internship--Technology_R261000111",
+      "requirements": "Additional Requirements: Expected graduation date between December 2027– June 2029.",
+      "synthetic_profile": {
+        "graduation": "June 2029",
+        "gpa": 3.5
+      },
+      "expected": "no_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-05",
+      "source": "duke",
+      "source_url": "https://dukeenergy.wd1.myworkdayjobs.com/search/job/Charlotte-NC/Telecommunications-Internship---Summer-2027_R41225",
+      "requirements": "Basic/Required Qualifications: Cumulative GPA of 2.75 or higher.",
+      "synthetic_profile": {
+        "graduation": "August 2027",
+        "gpa": 2.6
+      },
+      "expected": "hard_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-06",
+      "source": "duke",
+      "source_url": "https://dukeenergy.wd1.myworkdayjobs.com/search/job/Charlotte-NC/Telecommunications-Internship---Summer-2027_R41225",
+      "requirements": "Basic/Required Qualifications: Cumulative GPA of 2.75 or higher.",
+      "synthetic_profile": {
+        "graduation": "August 2027",
+        "gpa": 2.8
+      },
+      "expected": "no_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-07",
+      "source": "duke",
+      "source_url": "https://dukeenergy.wd1.myworkdayjobs.com/search/job/Charlotte-NC/Telecommunications-Internship---Summer-2027_R41225",
+      "requirements": "Basic/Required Qualifications: Cumulative GPA of 2.75 or higher. Desired Qualifications: GPA of 3.0 or higher.",
+      "synthetic_profile": {
+        "graduation": "August 2027",
+        "gpa": 2.8
+      },
+      "expected": "no_block",
+      "tag": "gpa_mixed_sections"
+    },
+    {
+      "id": "case-08",
+      "source": "duke",
+      "source_url": "https://dukeenergy.wd1.myworkdayjobs.com/search/job/Charlotte-NC/Telecommunications-Internship---Summer-2027_R41225",
+      "requirements": "Basic/Required Qualifications: Must not graduate before August 2027.",
+      "synthetic_profile": {
+        "graduation": "July 2027",
+        "gpa": 3.5
+      },
+      "expected": "hard_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-09",
+      "source": "duke",
+      "source_url": "https://dukeenergy.wd1.myworkdayjobs.com/search/job/Charlotte-NC/Telecommunications-Internship---Summer-2027_R41225",
+      "requirements": "Basic/Required Qualifications: Must not graduate before August 2027.",
+      "synthetic_profile": {
+        "graduation": "August 2027",
+        "gpa": 3.5
+      },
+      "expected": "no_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-10",
+      "source": "duke",
+      "source_url": "https://dukeenergy.wd1.myworkdayjobs.com/search/job/Charlotte-NC/Telecommunications-Internship---Summer-2027_R41225",
+      "requirements": "Desired Qualifications: Previous internship experience.",
+      "synthetic_profile": {
+        "graduation": "August 2027",
+        "gpa": 3
+      },
+      "expected": "no_block",
+      "tag": "preferred_experience"
+    },
+    {
+      "id": "case-11",
+      "source": "truist",
+      "source_url": "https://truist.wd1.myworkdayjobs.com/en-US/Careers/job/XMLNAME-2027-Enterprise-Payments-Summer-Intern_R0121539",
+      "requirements": "Minimum Qualifications: Overall GPA of 3.2 or above.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.1
+      },
+      "expected": "hard_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-12",
+      "source": "truist",
+      "source_url": "https://truist.wd1.myworkdayjobs.com/en-US/Careers/job/XMLNAME-2027-Enterprise-Payments-Summer-Intern_R0121539",
+      "requirements": "Minimum Qualifications: Overall GPA of 3.2 or above.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.4
+      },
+      "expected": "no_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-13",
+      "source": "truist",
+      "source_url": "https://truist.wd1.myworkdayjobs.com/en-US/Careers/job/XMLNAME-2027-Enterprise-Payments-Summer-Intern_R0121539",
+      "requirements": "Minimum Qualifications: Currently enrolled with a graduation date of December 2027 through May 2028.",
+      "synthetic_profile": {
+        "graduation": "November 2027",
+        "gpa": 3.4
+      },
+      "expected": "hard_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-14",
+      "source": "truist",
+      "source_url": "https://truist.wd1.myworkdayjobs.com/en-US/Careers/job/XMLNAME-2027-Enterprise-Payments-Summer-Intern_R0121539",
+      "requirements": "Minimum Qualifications: Currently enrolled with a graduation date of December 2027 through May 2028.",
+      "synthetic_profile": {
+        "graduation": "March 2028",
+        "gpa": 3.4
+      },
+      "expected": "no_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-15",
+      "source": "wells",
+      "source_url": "https://wf.wd1.myworkdayjobs.com/en-US/WellsFargoJobs/job/CHARLOTTE-NC/XMLNAME-2027-Technology-Summer-Internship---Early-Careers--Data-Engineering-_R-583066",
+      "requirements": "Required Qualifications: Six months' work experience or equivalent education and training. Desired Qualifications: Expected graduation between December 2027 and June 2028.",
+      "synthetic_profile": {
+        "graduation": "August 2029",
+        "gpa": 3
+      },
+      "expected": "no_block",
+      "tag": "desired_section"
+    },
+    {
+      "id": "case-16",
+      "source": "wells",
+      "source_url": "https://wf.wd1.myworkdayjobs.com/en-US/WellsFargoJobs/job/CHARLOTTE-NC/XMLNAME-2027-Technology-Summer-Internship---Early-Careers--Data-Engineering-_R-583066",
+      "requirements": "Desired Qualifications: Graduation between December 2027 and June 2028 is preferred.",
+      "synthetic_profile": {
+        "graduation": "November 2027",
+        "gpa": 2.8
+      },
+      "expected": "no_block",
+      "tag": "desired_section"
+    },
+    {
+      "id": "case-17",
+      "source": "honeywell",
+      "source_url": "https://hireaniner.charlotte.edu/jobs/df26b8c3f5f9a98734f8d8b0405424e0",
+      "requirements": "Minimum Qualifications: Validated academic excellence (3.0 GPA and higher).",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 2.9
+      },
+      "expected": "hard_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-18",
+      "source": "honeywell",
+      "source_url": "https://hireaniner.charlotte.edu/jobs/df26b8c3f5f9a98734f8d8b0405424e0",
+      "requirements": "Minimum Qualifications: Validated academic excellence (3.0 GPA and higher).",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3
+      },
+      "expected": "no_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-19",
+      "source": "honeywell",
+      "source_url": "https://hireaniner.charlotte.edu/jobs/df26b8c3f5f9a98734f8d8b0405424e0",
+      "requirements": "Minimum Qualifications: Must graduate December 2027 or later.",
+      "synthetic_profile": {
+        "graduation": "November 2027",
+        "gpa": 3.1
+      },
+      "expected": "hard_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-20",
+      "source": "honeywell",
+      "source_url": "https://hireaniner.charlotte.edu/jobs/df26b8c3f5f9a98734f8d8b0405424e0",
+      "requirements": "Minimum Qualifications: Must graduate December 2027 or later.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.1
+      },
+      "expected": "no_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-21",
+      "source": "honeywell",
+      "source_url": "https://hireaniner.charlotte.edu/jobs/df26b8c3f5f9a98734f8d8b0405424e0",
+      "requirements": "Minimum Qualifications: Must continue enrollment in degree program upon completion of internship.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.1
+      },
+      "expected": "manual_review",
+      "tag": "enrollment"
+    },
+    {
+      "id": "case-22",
+      "source": "sas",
+      "source_url": "https://careers-sas.icims.com/jobs/42964/summer-2027---software-development-and-testing-intern/job?mobile=true&needsRedirect=false",
+      "requirements": "Required qualifications: Not graduating before December 2027.",
+      "synthetic_profile": {
+        "graduation": "November 2027",
+        "gpa": 3.3
+      },
+      "expected": "hard_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-23",
+      "source": "sas",
+      "source_url": "https://careers-sas.icims.com/jobs/42964/summer-2027---software-development-and-testing-intern/job?mobile=true&needsRedirect=false",
+      "requirements": "Required qualifications: Not graduating before December 2027.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.3
+      },
+      "expected": "no_block",
+      "tag": "graduation"
+    },
+    {
+      "id": "case-24",
+      "source": "protiviti",
+      "source_url": "https://roberthalf.wd1.myworkdayjobs.com/en-US/ProtivitiNA/job/Charlotte-Technology-Consulting-Intern---2027_JR-258879",
+      "requirements": "Qualifications: Expected to graduate within 12 months after completion of internship.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.3
+      },
+      "expected": "manual_review",
+      "tag": "relative_graduation"
+    },
+    {
+      "id": "case-25",
+      "source": "aig",
+      "source_url": "https://aig.wd1.myworkdayjobs.com/en-US/aig/job/XMLNAME-2027-Early-Careers--Summer-Intern--Technology---United-States--Charlotte--NC--Houston--TX----Jersey-City--NJ_JR2603638-1",
+      "requirements": "Minimum cumulative GPA of 3.4 or higher.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.2
+      },
+      "expected": "hard_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-26",
+      "source": "aig",
+      "source_url": "https://aig.wd1.myworkdayjobs.com/en-US/aig/job/XMLNAME-2027-Early-Careers--Summer-Intern--Technology---United-States--Charlotte--NC--Houston--TX----Jersey-City--NJ_JR2603638-1",
+      "requirements": "Minimum cumulative GPA of 3.4 or higher.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.5
+      },
+      "expected": "no_block",
+      "tag": "gpa"
+    },
+    {
+      "id": "case-27",
+      "source": "aig",
+      "source_url": "https://aig.wd1.myworkdayjobs.com/en-US/aig/job/XMLNAME-2027-Early-Careers--Summer-Intern--Technology---United-States--Charlotte--NC--Houston--TX----Jersey-City--NJ_JR2603638-1",
+      "requirements": "Previous internship experience is required.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.5
+      },
+      "expected": "manual_review",
+      "tag": "experience"
+    },
+    {
+      "id": "case-28",
+      "source": "conversion",
+      "source_url": "https://notify.careers/postings/72499d6b-2a94-41b7-9440-2d38d5bee327",
+      "requirements": "This requisition is open to 2026 Truist interns only.",
+      "synthetic_profile": {
+        "graduation": "December 2027",
+        "gpa": 3.5
+      },
+      "expected": "manual_review",
+      "tag": "company_prior_intern"
+    }
+  ]
+}
