@@ -14,6 +14,8 @@ class EligibilityPrecisionTest(unittest.TestCase):
             "At least 3.5 cumulative GPA required.",
             "3.5 GPA minimum.",
             "GPA >= 3.5.",
+            "The minimum GPA is 3.5.",
+            "GPA 3.5+.",
             "GPA of at least 3.5.",
             "GPA 3.5 or higher required.",
         )
@@ -51,6 +53,7 @@ class EligibilityPrecisionTest(unittest.TestCase):
         self.assertTrue(any("later than required cutoff" in item for item in result))
         self.assertEqual(qualifications(
             "Applicants must graduate by December 2027.", self.PROFILE, 4.0), [])
+        self.assertTrue(qualifications("Must be graduating by May 2027.", self.PROFILE, 4.0))
 
     def test_explicit_graduation_earliest_date(self):
         result = qualifications("Must graduate no earlier than January 2028.", self.PROFILE, 4.0)
