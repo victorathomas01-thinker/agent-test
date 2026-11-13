@@ -2,12 +2,12 @@ import json
 import re
 from pathlib import Path
 from time import monotonic
-from urllib.parse import urlsplit
 
-from .core import ROOT, add_attempt, answer_for
+from .core import ROOT, add_attempt, answer_for, valid_application_url
 from .sessions import requires_sign_in
 
-FIELDS = 'input, textarea, select, [role="combobox"], [role="listbox"], [role="textbox"]'
+FIELDS = ('input, textarea, select, [role="combobox"], [role="listbox"], '
+          '[role="textbox"], [role="checkbox"], [role="radio"], [role="switch"]')
 SUPPORTED = {'text', 'email', 'tel', 'url', 'number', 'textarea', 'select-one'}
 IDENTITY_FIELDS = (
     'input[type=email], input[autocomplete=email], input[name*=email i], input[id=email i], '
@@ -21,9 +21,27 @@ def field_metadata(scope):
       const ariaName = node => (node?.getAttribute('aria-labelledby') || '').split(/\\s+/)
         .map(id => labelText(document.getElementById(id))).filter(Boolean).join(' ')
         || node?.getAttribute('aria-label') || '';
-      const label = [...(e.labels || [])].map(labelText).join(' ');
+      // The label of a nested SELECT can include every option's text.
+      // Remove descendant controls from a copy before naming the question,
+      // but keep visible words (including radio/checkbox choice text).
+      const cleanLabel = node => {
+        const copy = node.cloneNode(true);
+        copy.querySelectorAll(
+          'input, textarea, select, button, [role="combobox"], ' +
+          '[role="listbox"], [role="option"], [role="textbox"], ' +
+          '[role="radio"], [role="checkbox"], [role="switch"]'
+        ).forEach(child => child.remove());
+        return copy.textContent.trim();
+      };
+      const label = [...(e.labels || [])].map(cleanLabel).filter(Boolean).join(' ');
       const role = e.getAttribute('role');
-      const custom = ['combobox', 'listbox', 'textbox'].includes(role) && e.tagName !== 'SELECT';
+      // ARIA-only checkboxes, radio choices and switches do not carry native
+      // HTML input validation. Record them as manual custom controls rather
+      // than silently deciding a detached preview is ready.
+      const custom = (['combobox', 'listbox', 'textbox'].includes(role)
+          && e.tagName !== 'SELECT') ||
+        (['checkbox', 'radio', 'switch'].includes(role)
+          && (e.tagName !== 'INPUT' || !['checkbox', 'radio'].includes(e.type)));
       const group = ['radio', 'checkbox'].includes(e.type) &&
         e.closest('fieldset, [role="radiogroup"], [role="group"]');
       const listbox = document.getElementById(e.getAttribute('aria-controls') || '');
@@ -36,7 +54,8 @@ def field_metadata(scope):
         label: ariaName(e) || label || e.placeholder || '',
         group: group ? elements.findIndex(node => group.contains(node)) : -1,
         question: group ? ariaName(group) || labelText(group.querySelector(':scope > legend')) : '',
-        required: e.required || !!e.closest('[aria-required="true"]')
+        required: e.required || e.getAttribute('aria-required') === 'true'
+          || !!e.closest('[aria-required="true"]')
           || /\\*\\s*$/.test(ariaName(e) || label)
           || !!group && /\\*\\s*$/.test(labelText(group.querySelector(':scope > legend'))),
         visible: !!e.getClientRects().length && getComputedStyle(e).visibility === 'visible'
@@ -55,6 +74,37 @@ def choose_option(options, answer):
     matches = [o['value'] for o in options if o['value'] and
                normalized in (o['text'].strip().casefold(), o['value'].strip().casefold())]
     return matches[0] if len(matches) == 1 else None
+
+
+def custom_choice_reason(field, answer):
+    """Describe detached custom dropdown readiness without altering controls.
+
+    A static option match is only a hint for later attended review, not a
+    successful fill. Dynamic JS-driven widgets cannot be safely tested from
+    their detached HTML alone.
+    """
+    if field.get('role') not in {'combobox', 'listbox'}:
+        return 'custom control requires manual input'
+    if not isinstance(answer, str) or not answer.strip():
+        return 'custom control requires manual input'
+    options = field.get('options') or []
+    if not options:
+        return 'custom dropdown options unavailable offline'
+    wanted = answer.strip().casefold()
+    matches = [
+        option for option in options
+        if isinstance(option, dict)
+        and isinstance(option.get('text'), str)
+        and isinstance(option.get('value'), str)
+        and option['value'].strip()
+        and wanted in {option['text'].strip().casefold(),
+                       option['value'].strip().casefold()}
+    ]
+    if len(matches) > 1:
+        return 'multiple matching custom dropdown options'
+    if not matches:
+        return 'verified answer absent from custom dropdown options'
+    return 'verified choice available, selection requires manual input'
 
 
 def resume_file(cfg):
@@ -81,7 +131,10 @@ def grouped_choices(page, groups, cfg, filled, unresolved):
         first = fields[0]
         question = first['question'].strip().rstrip('*').strip()
         required = any(field['required'] for field in fields)
-        reason = 'requires manual input'
+        # Checkboxes may be attestations, EEO answers, or multi-select
+        # questions; never infer a legal acknowledgment from the form.
+        reason = ('checkbox group requires explicit applicant review'
+                  if first['type'] == 'checkbox' else 'requires manual input')
         if first['type'] == 'radio' and question:
             answer, key = answer_for(question, cfg)
             matches = [field for field in fields if answer is not None and
@@ -100,14 +153,30 @@ def grouped_choices(page, groups, cfg, filled, unresolved):
 
 
 def has_later_step(page):
-    controls = page.get_by_role(
-        'button', name=re.compile(
-            r'^(?:next(?: step| page)?|(?:save and )?continue(?: to .+)?)\s*[›→]?$', re.I
-        )
-    )
-    return any(button.is_visible() and button.evaluate(
-        "element => !!element.closest('form, [role=form]')"
-    ) for button in controls.all())
+    """Conservatively detect progress controls without clicking the employer form.
+
+    Native submit inputs, associated out-of-form buttons, accessible custom
+    buttons and in-form links may advance a wizard. Ordinary final-submit
+    controls and third-party sign-in buttons must not be counted as steps.
+    """
+    return page.locator(
+        'button, input[type="submit"], input[type="button"], '
+        '[role="button"], a[href], [role="link"]'
+    ).evaluate_all("""elements => elements.some(e => {
+      const label = (e.getAttribute('aria-label') || e.value ||
+        e.textContent || '').replace(/\\s+/g, ' ').trim();
+      const progress = new RegExp(
+        '^(?:next(?:\\\\s+(?:step|page|section))?' +
+        '|(?:save\\\\s+and\\\\s+)?continue(?:\\\\s+(?:to|application|next\\\\s+step)\\\\b.*)?' +
+        '|review(?:\\\\s+(?:application|answers|and\\\\s+submit))?)\\\\s*[›→»]?$', 'i');
+      if (!progress.test(label)) return false;
+      const style = getComputedStyle(e);
+      if (!e.getClientRects().length || style.visibility !== 'visible' ||
+          e.closest('[aria-hidden="true"]') || e.disabled ||
+          e.getAttribute('aria-disabled') === 'true') return false;
+      return !!(e.closest('form, [role="form"]') ||
+        (e.form && e.form.tagName === 'FORM'));
+    })""")
 
 
 def apply_to_page(page, cfg, live=False):
@@ -130,7 +199,8 @@ def apply_to_page(page, cfg, live=False):
             groups.setdefault(group_key, []).append(field)
             continue
         node = page.locator(FIELDS).nth(field['index'])
-        reason = 'requires manual input'
+        reason = ('checkbox requires explicit applicant review'
+                  if kind == 'checkbox' else 'requires manual input')
         try:
             if is_resume:
                 resume = resume_file(cfg)
@@ -141,9 +211,7 @@ def apply_to_page(page, cfg, live=False):
                 reason = 'resume file missing or unsupported'
             elif kind == 'custom':
                 answer, key = answer_for(label or identifier, cfg)
-                option = choose_option(field['options'], answer) if answer is not None else None
-                reason = ('verified choice available, selection requires manual input' if option
-                          else 'custom control requires manual input')
+                reason = custom_choice_reason(field, answer)
             elif kind in SUPPORTED:
                 answer, key = answer_for(label or identifier, cfg)
                 if answer is not None:
@@ -192,18 +260,24 @@ def run_browser(job, cfg, live=False):
 def preview(url, cfg):
     from playwright.sync_api import sync_playwright
 
-    address = urlsplit(url)
-    if address.scheme != 'https' or not address.hostname or address.username is not None:
+    if not valid_application_url(url):
         return 'needs_review', 'An HTTPS application URL without credentials is required.'
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=cfg['automation'].get('headless', True))
         try:
             source = browser.new_context(accept_downloads=False, service_workers='block')
+            source.route('**/*', lambda route: route.continue_()
+                         if route.request.method in {'GET', 'HEAD'} and valid_application_url(route.request.url)
+                         else route.abort())
             page = source.new_page()
             response = page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            if not valid_application_url(page.url):
+                return 'needs_review', 'The application redirected to an unsupported address.'
             if requires_sign_in(page):
                 return 'needs_review', 'Sign-in needed.'
+            if response is not None and response.status in {404, 410}:
+                return 'expired', 'The posting returned HTTP 404 or 410.'
             if response is None or not response.ok:
                 return 'needs_review', 'Application page was unavailable.'
             frame = find_form_frame(page)

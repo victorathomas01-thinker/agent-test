@@ -26,6 +26,15 @@
     "requires_drivers_license": null
   },
   "discovery": {
+    "ashby_boards": ["ramp"],
+    "career_sites": [],
+    "career_page_budget": 10,
+    "smartrecruiters_companies": ["BoschGroup"],
+    "workday_sites": [],
+    "max_workday_per_site": 40,
+    "greenhouse_custom_hosts": {
+      "duolingo": ["careers.duolingo.com"]
+    },
     "greenhouse_boards": [
       "canonical",
       "duolingo",
@@ -40,9 +49,11 @@
       "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json",
       "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json"
     ],
-    "max_discovered_boards": 25
+    "max_discovered_boards": 60
   },
   "preferences": {
+    "strategy": "fit",
+    "include_adjacent_roles": true,
     "minimum_score": 20,
     "keywords": [
       "software engineer",

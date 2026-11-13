@@ -1,0 +1,30 @@
+name: One-time public single-posting verification (no applicant data)
+
+# Only this file's explicit creation/update can trigger the public GET probe.
+# No schedule, no PR trigger, no application posting or browser.
+on:
+  push:
+    branches:
+      - feature/official-single-posting-recheck-2026-11-13
+    paths:
+      - .github/workflows/one-time-single-posting-recheck.yml
+
+permissions:
+  contents: read
+
+jobs:
+  read-one-greenhouse-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read repository source
+        uses: actions/checkout@v4
+      - name: Use standard Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Read one public board sample and exact posting, refresh synthetic SQLite only
+        run: python -m scripts.probe_single_recheck
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONUNBUFFERED: '1'
