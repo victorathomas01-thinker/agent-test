@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Lock, Thread
 from urllib.parse import parse_qs, urlsplit
 
-from . import core, workbench
+from . import core, workbench, form_diagnostics
 
 
 def server_for(cfg, port):
@@ -57,6 +57,8 @@ def server_for(cfg, port):
                     job = parse_qs(address.query).get('id', [''])[0]
                     result = workbench.explain_job(con, job, cfg)
                     return self.send(200 if result else 404, result or {})
+                if address.path == '/api/form-audit':
+                    return self.send(200, form_diagnostics.summarize(con))
                 if address.path == '/api/history':
                     runs = [dict(row) for row in con.execute('SELECT * FROM runs ORDER BY id DESC LIMIT 50')]
                     attempts = [dict(row) for row in con.execute(

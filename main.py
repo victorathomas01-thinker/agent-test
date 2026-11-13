@@ -8,6 +8,7 @@ import sys
 
 from agent import core
 from agent import source_health
+from agent import form_diagnostics
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
@@ -164,6 +165,8 @@ def main():
     queue.add_argument('--limit', type=positive_integer, default=20)
     coverage_cmd = commands.add_parser('coverage', help='Inspect the last local discovery source audit.')
     coverage_cmd.add_argument('--limit', type=positive_integer, default=50)
+    form_audit = commands.add_parser('form-audit', help='Summarize unresolved offline form blockers.')
+    form_audit.add_argument('--limit', type=positive_integer, default=500)
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
     login = commands.add_parser('sign-in', help='Open a dedicated Indeed browser profile for manual sign-in.')
     login.add_argument('portal', choices=['indeed'])
@@ -335,6 +338,9 @@ def main():
         return
     if args.command == 'coverage':
         source_health.print_latest(min(args.limit, 500))
+        return
+    if args.command == 'form-audit':
+        form_diagnostics.print_report(min(args.limit, 5000))
         return
     if args.command == 'discover-web':
         seeds = json.loads(args.sources.read_text(encoding='utf-8-sig'))
