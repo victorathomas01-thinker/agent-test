@@ -55,6 +55,28 @@ class FormDiagnosticsTests(unittest.TestCase):
                 self.assertIn("NOT a verified live", output.getvalue())
                 self.assertNotIn("PRIVATE_PERSONAL_FIELD_LABEL", output.getvalue())
 
+    def test_actionable_form_blocker_remediation_uses_only_fixed_safe_text(self):
+        from agent.form_diagnostics import BLOCKER_ACTIONS
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(core, "DB", Path(temp) / "local.sqlite3"):
+                with closing(core.connect()) as con, con:
+                    con.executemany(
+                        "INSERT INTO attempts(job_id,outcome,details) VALUES(?,?,?)", [
+                            ("a", *review(field("checkbox requires explicit applicant review"))),
+                            ("b", *review(field("custom control requires manual input"))),
+                        ])
+                with closing(core.connect()) as con:
+                    report = form_diagnostics.summarize(con)
+                actions = report["recommended_next_actions"]
+                self.assertEqual(
+                    actions["checkbox_attestation_or_choice"],
+                    BLOCKER_ACTIONS["checkbox_attestation_or_choice"])
+                self.assertIn("Applicant must review", actions["checkbox_attestation_or_choice"])
+                self.assertIn("manual review", actions["unsupported_custom_control"])
+                self.assertNotIn("PRIVATE_PERSONAL_FIELD_LABEL", repr(report))
+                self.assertNotIn("applicant@example.invalid", repr(report))
+                self.assertEqual(set(actions), set(report["required_blockers"]))
+
     def test_multiple_required_fields_group_by_category_and_job(self):
         with tempfile.TemporaryDirectory() as temp:
             with patch.object(core, "DB", Path(temp) / "local.sqlite3"):

@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**Public application-form readiness (draft):** [Lever and Greenhouse read-only form observations](docs/PUBLIC_FORM_READINESS_2026-11-13.md) compare the anonymous types and required controls from one public form per ATS. Synthetic Chromium tests keep checkbox attestations and ARIA-only custom controls unresolved. The local Form Readiness dashboard now recommends a safe next action per blocker category; no real application data is exported or submitted.
+
 **One-click public source review (draft):** [Needs Recheck queue and live Lever evidence](docs/REVIEW_QUEUE_RECHECK.md) keeps stale previously-prepared listings visible and offers an explicit, session-token-guarded Greenhouse/Lever read-only recheck button in the local dashboard. No employer requests occur on page load, and the source test used a disposable synthetic database only.
 
 **Official one-job public recheck (review-only):** [Usage, restrictions and outcomes](docs/OFFICIAL_SINGLE_RECHECK.md). `python main.py recheck-job <saved-official-job-id>` checks one saved Greenhouse/Lever posting through its own public GET endpoint. Only an exact matching official result can refresh local metadata and eligibility. A 404, access denial, redirect or ID mismatch never marks the posting closed or modifies the saved record.

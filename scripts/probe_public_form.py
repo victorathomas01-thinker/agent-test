@@ -74,6 +74,14 @@ def classify_fields(fields):
         "visible_fields": visible,
         "required_fields": sum(required.values()),
         "required_custom_or_unknown": unsupported,
+        # All of these should remain under human review or require an
+        # employer-specific verified choice. This is not a readiness rate.
+        "required_checkbox_attestations_or_choices": required["checkbox"],
+        "required_native_radio_choices": required["radio"],
+        "required_file_uploads": required["file"],
+        "required_unsupported_controls": unsupported,
+        "requires_human_decisions_on_observed_step": bool(
+            required["checkbox"] or required["radio"] or unsupported),
         "types": dict(sorted(counts.items())),
         "required_types": dict(sorted(required.items())),
     }
@@ -139,6 +147,12 @@ def main():
         print("Visible controls:", summary["visible_fields"])
         print("Required controls:", summary["required_fields"])
         print("Required custom/unknown:", summary["required_custom_or_unknown"])
+        print("Required checkbox attestations/choices:",
+              summary["required_checkbox_attestations_or_choices"])
+        print("Required native radio choices:", summary["required_native_radio_choices"])
+        print("Required file uploads:", summary["required_file_uploads"])
+        print("Observed step needs human/verified choices:",
+              summary["requires_human_decisions_on_observed_step"])
         print("Field types:", summary["types"])
         print("Required types:", summary["required_types"])
     print("No input, upload, click, or form submission occurred.")
