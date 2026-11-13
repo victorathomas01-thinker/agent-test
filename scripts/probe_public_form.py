@@ -109,7 +109,7 @@ def probe():
             response = page.goto(url, wait_until="domcontentloaded", timeout=20_000)
             if response is None or not response.ok:
                 return {"status": "page_unavailable", "field_summary": None}
-            if page.url != url:
+            if not official_job_url({**approved[0], "url": page.url}):
                 return {"status": "unexpected_redirect", "field_summary": None}
             if requires_sign_in(page):
                 return {"status": "login_required", "field_summary": None}
