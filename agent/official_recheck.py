@@ -33,9 +33,23 @@ class DenyRedirects(HTTPRedirectHandler):
 
 def public_api_json(url):
     """Bounded public GET only. URL is constructed by target_for(), not input."""
-    host = urlsplit(url).hostname
-    if host not in {'boards-api.greenhouse.io', 'api.lever.co'}:
+    parsed = urlsplit(url)
+    host = parsed.hostname
+    if (parsed.scheme != 'https' or parsed.username is not None
+            or parsed.password is not None or parsed.port not in (None, 443)
+            or parsed.fragment or parsed.netloc.casefold() != str(host or '').casefold()
+            or host not in {'boards-api.greenhouse.io', 'api.lever.co'}):
         raise ValueError('Unsupported public posting API origin.')
+    if host == 'boards-api.greenhouse.io':
+        path = re.fullmatch(r'/v1/boards/([a-zA-Z0-9_-]{1,80})/jobs/([0-9]{1,20})', parsed.path)
+        if not path or parsed.query != 'content=true':
+            raise ValueError('Unsafe Greenhouse single-posting read endpoint.')
+    else:
+        path = re.fullmatch(
+            r'/v0/postings/([a-zA-Z0-9_-]{1,80})/'
+            r'([0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})', parsed.path)
+        if not path or parsed.query != 'mode=json':
+            raise ValueError('Unsafe Lever single-posting read endpoint.')
     request = Request(url, headers={
         'Accept': 'application/json',
         'User-Agent': 'PersonalJobAgent/0.1 (one-job public listing verification)',
