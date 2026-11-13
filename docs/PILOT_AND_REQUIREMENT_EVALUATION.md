@@ -7,16 +7,16 @@
 After this development branch is reviewed and checked out locally, use:
 
 ```powershell
-python main.py pilot-audit --limit 20 --expected 20
+python main.py pilot-audit --offline-only --limit 20 --expected 20
 ```
 
 If the exact pilot date window is known, specify it to avoid including unrelated later attempts:
 
 ```powershell
-python main.py pilot-audit --since 2026-10-01 --through 2026-10-31 --limit 20 --expected 20
+python main.py pilot-audit --since 2026-10-01 --through 2026-10-31 --offline-only --limit 20 --expected 20
 ```
 
-*The dates above are illustrative, not a claim about when the original pilot happened.* For an archived local SQLite copy, use `--database C:\\path\\to\\agent.sqlite3`. The tool refuses to create a missing database. It opens the specified file read-only, chooses the latest **offline** attempt for each distinct job within the date range, and prints only aggregate totals by ATS provider, blocker category, and the number of affected jobs. It does **not** print posting IDs, employer names, answers, the applicant's GPA, contact information, job descriptions, original questions, or raw error text.
+*The dates above are illustrative, not a claim about when the original pilot happened.* For an archived local SQLite copy, use `--database C:\\path\\to\\agent.sqlite3`. The tool refuses to create a missing database. It opens the specified file read-only; with `--offline-only` it chooses the most recent **detached preview** for each job rather than letting later login failures replace the original pilot history. Without that flag it reports the latest recorded attempt per job, including non-preview failures. It prints only aggregate totals by ATS provider, blocker category, and the number of affected jobs. It does **not** print posting IDs, employer names, answers, the applicant's GPA, contact information, job descriptions, original questions, or raw error text.
 
 **Crucial:** Getting exactly 20 matching records is not proof they are the same 20 original pilot jobs. The final pilot claim requires comparing its original saved run/date selection. If the existing DB has no detailed detached previews, report unavailable rather than reconstructing them from the prior summary. The reported `offline_current_step_prepared` count does not imply an applicant can submit a real employer form.
 
@@ -47,6 +47,10 @@ Examples covered with source links in the fixture:
 - [Truist 2027 Intern Conversion](https://notify.careers/postings/72499d6b-2a94-41b7-9440-2d38d5bee327): restricted to a prior internal company internship cohort. A normal external student should not be assumed eligible.
 
 The parser now retains separate **Required Qualifications** and **Desired Qualifications** scope even when the original HTML is flattened into plain text; it also recognizes common `through` and dash-separated graduation ranges, minimum GPA alternatives, and ambiguous prior-intern/continued-enrollment requirements. Preferred GPA phrasing must remain nonblocking even when it contains the word **minimum**.
+
+## Disposable installation and recovery verification
+
+A separate [Windows CI acceptance run](https://github.com/victorathomas01-thinker/agent-test/actions/runs/43364014263) exercised the integrated command-line app in a fresh disposable working directory. It initialized a local SQLite database with live submission disabled, inserted 20 entirely synthetic blocked previews, ran the audit and 28-case requirement fixture, performed SQLite backup/restore, created two SQL market snapshots, and expanded a four-table legacy database without deleting its original job and attempt rows. It never used the user's original pilot records or any live employer form. The smoke test is repeatable with `python -m scripts.integration_acceptance` and runs without network calls.
 
 ## Remaining release gates
 
