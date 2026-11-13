@@ -76,6 +76,37 @@ def choose_option(options, answer):
     return matches[0] if len(matches) == 1 else None
 
 
+def custom_choice_reason(field, answer):
+    """Describe detached custom dropdown readiness without altering controls.
+
+    A static option match is only a hint for later attended review, not a
+    successful fill. Dynamic JS-driven widgets cannot be safely tested from
+    their detached HTML alone.
+    """
+    if field.get('role') not in {'combobox', 'listbox'}:
+        return 'custom control requires manual input'
+    if not isinstance(answer, str) or not answer.strip():
+        return 'custom control requires manual input'
+    options = field.get('options') or []
+    if not options:
+        return 'custom dropdown options unavailable offline'
+    wanted = answer.strip().casefold()
+    matches = [
+        option for option in options
+        if isinstance(option, dict)
+        and isinstance(option.get('text'), str)
+        and isinstance(option.get('value'), str)
+        and option['value'].strip()
+        and wanted in {option['text'].strip().casefold(),
+                       option['value'].strip().casefold()}
+    ]
+    if len(matches) > 1:
+        return 'multiple matching custom dropdown options'
+    if not matches:
+        return 'verified answer absent from custom dropdown options'
+    return 'verified choice available, selection requires manual input'
+
+
 def resume_file(cfg):
     value = cfg['profile'].get('resume_path')
     if not value:
@@ -180,9 +211,7 @@ def apply_to_page(page, cfg, live=False):
                 reason = 'resume file missing or unsupported'
             elif kind == 'custom':
                 answer, key = answer_for(label or identifier, cfg)
-                option = choose_option(field['options'], answer) if answer is not None else None
-                reason = ('verified choice available, selection requires manual input' if option
-                          else 'custom control requires manual input')
+                reason = custom_choice_reason(field, answer)
             elif kind in SUPPORTED:
                 answer, key = answer_for(label or identifier, cfg)
                 if answer is not None:
