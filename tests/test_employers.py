@@ -36,7 +36,7 @@ class EmployerDiscoveryTest(unittest.TestCase):
 
     def test_only_imports_active_board_api_postings_and_keeps_fallback(self):
         cfg = core.with_defaults({'discovery': {
-            'greenhouse_boards': ['known'], 'lever_sites': [],
+            'greenhouse_boards': ['known'], 'lever_sites': [], 'ashby_boards': [], 'smartrecruiters_companies': [],
             'employer_feeds': ['broken', 'feed'],
         }})
         clue = dict(url='https://boards.greenhouse.io/new/jobs/100', active=True,

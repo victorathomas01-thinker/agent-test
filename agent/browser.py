@@ -2,9 +2,8 @@ import json
 import re
 from pathlib import Path
 from time import monotonic
-from urllib.parse import urlsplit
 
-from .core import ROOT, add_attempt, answer_for
+from .core import ROOT, add_attempt, answer_for, valid_application_url
 from .sessions import requires_sign_in
 
 FIELDS = 'input, textarea, select, [role="combobox"], [role="listbox"], [role="textbox"]'
@@ -81,7 +80,10 @@ def grouped_choices(page, groups, cfg, filled, unresolved):
         first = fields[0]
         question = first['question'].strip().rstrip('*').strip()
         required = any(field['required'] for field in fields)
-        reason = 'requires manual input'
+        # Checkboxes may be attestations, EEO answers, or multi-select
+        # questions; never infer a legal acknowledgment from the form.
+        reason = ('checkbox group requires explicit applicant review'
+                  if first['type'] == 'checkbox' else 'requires manual input')
         if first['type'] == 'radio' and question:
             answer, key = answer_for(question, cfg)
             matches = [field for field in fields if answer is not None and
@@ -130,7 +132,8 @@ def apply_to_page(page, cfg, live=False):
             groups.setdefault(group_key, []).append(field)
             continue
         node = page.locator(FIELDS).nth(field['index'])
-        reason = 'requires manual input'
+        reason = ('checkbox requires explicit applicant review'
+                  if kind == 'checkbox' else 'requires manual input')
         try:
             if is_resume:
                 resume = resume_file(cfg)
@@ -192,18 +195,24 @@ def run_browser(job, cfg, live=False):
 def preview(url, cfg):
     from playwright.sync_api import sync_playwright
 
-    address = urlsplit(url)
-    if address.scheme != 'https' or not address.hostname or address.username is not None:
+    if not valid_application_url(url):
         return 'needs_review', 'An HTTPS application URL without credentials is required.'
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=cfg['automation'].get('headless', True))
         try:
             source = browser.new_context(accept_downloads=False, service_workers='block')
+            source.route('**/*', lambda route: route.continue_()
+                         if route.request.method in {'GET', 'HEAD'} and valid_application_url(route.request.url)
+                         else route.abort())
             page = source.new_page()
             response = page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            if not valid_application_url(page.url):
+                return 'needs_review', 'The application redirected to an unsupported address.'
             if requires_sign_in(page):
                 return 'needs_review', 'Sign-in needed.'
+            if response is not None and response.status in {404, 410}:
+                return 'expired', 'The posting returned HTTP 404 or 410.'
             if response is None or not response.ok:
                 return 'needs_review', 'Application page was unavailable.'
             frame = find_form_frame(page)

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Job Agent</title>
+<style>
+:root{color-scheme:light;--ink:#132339;--accent:#145397;--line:#dce4ed}
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:var(--ink);font:15px system-ui}
+header,main{max-width:1200px;margin:auto;padding:20px}h1,h2{margin:0 0 8px}
+nav,.filters,.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+button,select,input{font:inherit;padding:8px 10px;border:1px solid #b8c8db;border-radius:6px;background:#fff;color:inherit}
+button{cursor:pointer}button[aria-pressed=true],.primary{background:var(--accent);color:white}
+a{color:var(--accent)}article{background:white;border:1px solid var(--line);border-radius:8px;padding:13px;margin:8px 0}
+article p{margin:7px 0}article h2{font-size:17px}.muted{color:#43566f}pre{white-space:pre-wrap}
+label{display:inline-flex;gap:6px;align-items:center}#message{min-height:1.2em;color:#164872}
+</style>
+<header><h1>Personal Job Agent</h1><p class="muted">Review your job search and prepare applications locally.</p>
+<nav id="views" aria-label="Dashboard views"></nav></header>
+<main>
+<section id="controls">
+<div class="filters">
+<input id="search" placeholder="Search roles, companies, or locations" aria-label="Search">
+<select id="category" aria-label="Career category"><option value="">All categories</option></select>
+<select id="eligibility" aria-label="Eligibility"><option value="">All eligibility</option><option value="1">Eligible</option><option value="0">Needs review or excluded</option></select>
+<select id="schedule" aria-label="Schedule"><option value="">All schedules</option><option value="part">Part-time</option><option value="full">Full-time</option><option value="intern">Internship</option></select>
+<select id="sort" aria-label="Sort"><option value="score">Highest priority</option><option value="recent">Recently seen</option><option value="title">Role name</option></select>
+<input id="pay" type="number" min="0" placeholder="Minimum hourly pay" aria-label="Minimum hourly pay">
+<input id="score" type="number" min="0" max="100" placeholder="Minimum score" aria-label="Minimum score">
+</div>
+<div class="actions">
+<button id="selectpage">Select this page</button><button id="prepare" class="primary">Prepare selected offline</button>
+<button id="export">Export filtered jobs</button><button id="open">Open offline posting links</button><button id="refresh">Refresh</button>
+</div>
+</section>
+<p id="message" role="status"></p><p id="count"></p>
+<div id="list"></div>
+<div class="actions" id="paging"><button id="prev">Previous page</button><button id="next">Next page</button></div>
+</main>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+const token = '__SESSION_TOKEN__';
+const views = ['All Jobs', 'Top Matches', 'Bridge Jobs', 'Selected', 'Offline Previews', 'Ready to Review', 'Needs Attention', 'Form Readiness', 'Applications', 'History'];
+let view = views[0], page = 0, jobs = [], loading = false;
+const size = 25;
+function element(tag, content, parent) {
+  const node = document.createElement(tag);
+  if (content != null) node.textContent = content;
+  if (parent) parent.append(node);
+  return node;
+}
+function say(message) { byId('message').textContent = message; }
+async function request(path, body) {
+  const options = body ? {method:'POST', headers:{'Content-Type':'application/json','X-Workbench-Token':token}, body:JSON.stringify(body)} : {};
+  const response = await fetch(path, options);
+  if (!response.ok) throw new Error('The local request failed.');
+  return response.json();
+}
+const terminal = new Set(['submitted','interview','assessment','offer','rejected','withdrawn','submission_pending']);
+function filtered() {
+  const term = byId('search').value.toLowerCase();
+  const category = byId('category').value;
+  const eligible = byId('eligibility').value;
+  const schedule = byId('schedule').value;
+  const pay = Number(byId('pay').value);
+  const score = byId('score').value;
+  const result = jobs.filter(job => {
+    if (view === 'Top Matches' && (!job.eligible || terminal.has(job.status) || job.status === 'expired' || job.verification === 'unverified')) return false;
+    if (view === 'Bridge Jobs' && job.category !== 'Bridge employment') return false;
+    if (view === 'Selected' && !job.preparation) return false;
+    if (view === 'Offline Previews' && job.preparation !== 'offline_preview') return false;
+    if (view === 'Ready to Review' && job.preparation !== 'live_review') return false;
+    if (view === 'Needs Attention' && job.preparation !== 'needs_attention' && job.status !== 'submission_pending') return false;
+    if (view === 'Applications' && !terminal.has(job.status)) return false;
+    if (category && job.category !== category) return false;
+    if (eligible && Number(eligible) !== job.eligible) return false;
+    if (schedule && !String(job.employment_type || job.title).toLowerCase().replace(/[- ]/g,'').includes(schedule)) return false;
+    const hourly = String(job.salary || '').match(/[$]\s*(\d+(?:\.\d+)?)\s*(?:\/hr|per hour|hourly)/i);
+    if (pay && (!hourly || Number(hourly[1]) < pay)) return false;
+    return (!score || job.score >= Number(score)) &&
+      [job.title,job.company,job.location,job.reason,job.source].join(' ').toLowerCase().includes(term);
+  });
+  const sort = byId('sort').value;
+  if (sort === 'title') result.sort((a,b) => String(a.title).localeCompare(String(b.title)));
+  else if (sort === 'recent') result.sort((a,b) => String(b.last_seen).localeCompare(String(a.last_seen)));
+  else result.sort((a,b) => (view === 'Bridge Jobs' ? (b.bridge_score || 0) - (a.bridge_score || 0) : b.score - a.score) || a.category_priority - b.category_priority);
+  return result;
+}
+function render() {
+  const list = byId('list');
+  list.replaceChildren();
+  byId('controls').hidden = byId('paging').hidden = view === 'History' || view === 'Form Readiness';
+  if (view === 'Form Readiness') {
+    byId('count').textContent = '';
+    element('h2', 'Offline form-preparation diagnostics', list);
+    element('p', 'Counts come from the latest saved attempt for each job. These checks do not prove live form readiness or submission.', list);
+    request('/api/form-audit').then(report => {
+      if (view !== 'Form Readiness') return;
+      element('p', report.latest_jobs + ' latest job attempts · ' + report.dry_run_previews +
+        ' detached offline previews · ' + report.prepared_current_step_only +
+        ' passed the CURRENT offline step only', list);
+      element('h2', 'Required-field blockers', list);
+      const items = Object.entries(report.required_blockers)
+        .sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      if (!items.length) element('p', 'No recorded required-field blockers. This does not verify that a live form is complete.', list);
+      for (const [name,count] of items) {
+        const card = element('article', null, list);
+        element('h2', name.replaceAll('_',' '), card);
+        element('p', count + ' required fields across ' + report.jobs_affected[name] + ' job(s)', card);
+      }
+    }).catch(error => say(error.message));
+    return;
+  }
+  if (view === 'History') {
+    byId('count').textContent = '';
+    request('/api/history').then(history => {
+      if (view !== 'History') return;
+      for (const item of history.runs) element('p', [item.started_at,item.status,item.details].join(' | '), list);
+      for (const item of history.attempts) element('p', [item.at,item.job_id,item.outcome].join(' | '), list);
+    }).catch(error => say(error.message));
+    return;
+  }
+  const items = filtered();
+  page = Math.max(0, Math.min(page, Math.ceil(items.length / size) - 1));
+  byId('count').textContent = items.length + ' matching · ' + jobs.length + ' total · Page ' + (page + 1);
+  byId('prev').disabled = page === 0;
+  byId('next').disabled = (page + 1) * size >= items.length;
+  for (const job of items.slice(page * size, (page + 1) * size)) {
+    const card = element('article', null, list);
+    element('h2', job.title || 'Untitled posting', card);
+    element('p', [job.company,job.location,job.category,'Score ' + job.score,job.salary,job.employment_type].filter(Boolean).join(' · '), card);
+    element('p', [job.status,job.preparation,job.verification,job.source,job.last_seen,job.published_at,job.deadline].filter(Boolean).join(' · '), card);
+    if (job.blocker || job.reason) element('p', job.blocker || job.reason, card);
+    if (job.can_override) {
+      const override = element('button', job.override ? 'Remove offline override' : 'Allow offline preparation', card);
+      override.onclick = () => action('/api/override', {id:job.id,enabled:!job.override});
+    }
+    const label = element('label', null, card);
+    const check = element('input', null, label); check.type = 'checkbox'; check.checked = Boolean(job.preparation);
+    check.setAttribute('aria-label', 'Select ' + job.title);
+    check.addEventListener('change', () => action('/api/select',{ids:[job.id],selected:check.checked}));
+    element('span','Select',label);
+    if (job.url) {
+      const link = element('a',' Open employer posting ',card); link.href=job.url; link.target='_blank'; link.rel='noopener noreferrer';
+    }
+    const details = element('button','Why and what needs review?',card);
+    details.addEventListener('click', async () => {
+      if (details.nextElementSibling) { details.nextElementSibling.remove(); return; }
+      try {
+        const result = await request('/api/detail?id=' + encodeURIComponent(job.id));
+        element('pre', [result.eligibility,'Confidence: '+result.confidence,
+          ...Object.entries(result.dimensions).map(([key,value]) => key+' '+value+'/100 · '+result.reasons[key].join(', ')),
+          ...result.review].join('\n'),card);
+      } catch (error) { say(error.message); }
+    });
+  }
+}
+async function refresh() {
+  if (loading) return;
+  loading = true;
+  try {
+    jobs = await request('/api/jobs');
+    const category = byId('category'), previous = category.value;
+    category.replaceChildren(new Option('All categories',''));
+    for (const name of [...new Set(jobs.map(job=>job.category))].sort()) category.add(new Option(name,name));
+    category.value = previous;
+    render();
+  } finally { loading = false; }
+}
+async function action(path, data) {
+  try { await request(path,data); await refresh(); }
+  catch(error) { say(error.message); }
+}
+for (const name of views) {
+  const button = element('button',name,byId('views'));
+  button.setAttribute('aria-pressed',String(view===name));
+  button.addEventListener('click', () => {
+    view=name;page=0;
+    for (const item of byId('views').children) item.setAttribute('aria-pressed',String(item===button));
+    render();
+  });
+}
+for (const id of ['search','category','eligibility','schedule','sort','pay','score']) byId(id).addEventListener('input',()=>{page=0;render();});
+byId('prev').onclick=()=>{page--;render();};
+byId('next').onclick=()=>{page++;render();};
+byId('selectpage').onclick=()=>action('/api/select',{ids:filtered().slice(page*size,(page+1)*size).map(j=>j.id),selected:true});
+byId('prepare').onclick=()=>{say('Selected jobs queued for offline preparation. Refresh to see progress.');action('/api/prepare',{});};
+byId('refresh').onclick=()=>refresh().catch(error=>say(error.message));
+byId('open').onclick=()=>{
+  for (const job of jobs.filter(j=>j.preparation==='offline_preview' && j.url)) window.open(job.url,'_blank','noopener,noreferrer');
+  say('Opened employer links where allowed by Edge. Offline previews do not carry entered values to live pages.');
+};
+byId('export').onclick=()=>{
+  const columns=['id','title','company','location','category','score','eligible','reason','salary','status','preparation','url'];
+  const cell = value => {let s=String(value??''); if (/^[=+@\-\t\r]/.test(s)) s="'"+s; return '"'+s.replaceAll('"','""')+'"';};
+  const content = [columns.join(','),...filtered().map(j=>columns.map(k=>cell(j[k])).join(','))].join('\r\n');
+  const href=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));
+  const link=element('a');link.href=href;link.download='job-agent-jobs.csv';link.click();setTimeout(()=>URL.revokeObjectURL(href),1000);
+};
+refresh().catch(error=>say(error.message));
+</script>
+</html>
