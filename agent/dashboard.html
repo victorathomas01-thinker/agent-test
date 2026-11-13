@@ -108,6 +108,8 @@ function render() {
         const card = element('article', null, list);
         element('h2', name.replaceAll('_',' '), card);
         element('p', count + ' required fields across ' + report.jobs_affected[name] + ' job(s)', card);
+        if (report.recommended_next_actions?.[name])
+          element('p', report.recommended_next_actions[name], card);
       }
     }).catch(error => say(error.message));
     return;
