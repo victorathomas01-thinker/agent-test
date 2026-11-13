@@ -4,11 +4,13 @@ All tests are offline. No personal applicant records, employer traffic, browser,
 form entry, résumé, or submissions.
 """
 import hashlib
+import io
+import sys
 import json
 import sqlite3
 import tempfile
 import unittest
-from contextlib import closing
+from contextlib import closing, ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
@@ -265,6 +267,99 @@ class SinglePostingRecheckTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             official_recheck.DenyRedirects().redirect_request(
                 None, None, 302, "", {}, "https://example.invalid/private")
+
+    def test_public_http_reader_only_gets_one_exact_json_endpoint(self):
+        class FakeResponse:
+            headers = {"Content-Type": "application/json; charset=UTF-8"}
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return None
+            def read(self, amount):
+                self_amount = amount
+                if self_amount != official_recheck.MAX_BYTES + 1:
+                    raise AssertionError("Response read is not bounded")
+                return json.dumps(details_greenhouse()).encode("utf-8")
+
+        seen = []
+        def mock_open(request, timeout):
+            seen.append((request.full_url, request.get_method(), timeout,
+                         request.get_header("Accept")))
+            return FakeResponse()
+
+        with patch.object(official_recheck, "build_opener") as opener:
+            opener.return_value.open.side_effect = mock_open
+            result = official_recheck.public_api_json(
+                "https://boards-api.greenhouse.io/v1/boards/example/jobs/123?content=true")
+        self.assertEqual(result["id"], 123)
+        self.assertEqual(seen, [(
+            "https://boards-api.greenhouse.io/v1/boards/example/jobs/123?content=true",
+            "GET", 15, "application/json")])
+        self.assertEqual(opener.call_count, 1)
+
+    def test_http_reader_rejects_non_json_or_oversized_responses(self):
+        class FakeResponse:
+            def __init__(self, mime, body):
+                self.headers = {"Content-Type": mime}
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return None
+            def read(self, size):
+                return self.body[:size]
+
+        endpoint = "https://api.lever.co/v0/postings/example/" + LEVER_UUID + "?mode=json"
+        for mime, body in (
+            ("text/html", b"<h1>Login</h1>"),
+            ("application/json", b"X" * (official_recheck.MAX_BYTES + 1)),
+        ):
+            with self.subTest(mime=mime):
+                with patch.object(official_recheck, "build_opener") as opener:
+                    opener.return_value.open.return_value = FakeResponse(mime, body)
+                    with self.assertRaises(ValueError):
+                        official_recheck.public_api_json(endpoint)
+
+    def test_cli_recheck_bypasses_mutating_startup_and_respects_preflight(self):
+        import main as app
+        result = {"status": "verified_listed", "updated": True,
+                  "eligible_after_recheck": True}
+        output = io.StringIO()
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(sys, "argv",
+                                             ["main.py", "recheck-job", GREENHOUSE]))
+            stack.enter_context(patch("main.local_safety.inspect", return_value={
+                "database": "ready", "config": "valid",
+            }))
+            stack.enter_context(patch("main.core.load_config", return_value=self.cfg))
+            executor = stack.enter_context(patch(
+                "main.official_recheck.recheck_saved", return_value=result))
+            stack.enter_context(patch(
+                "main.effective_answers", side_effect=AssertionError(
+                    "Mutating verified facts are not permitted in CLI recheck")))
+            stack.enter_context(patch.object(
+                core, "connect", side_effect=AssertionError(
+                    "Schema initialization is not permitted in CLI recheck")))
+            stack.enter_context(redirect_stdout(output))
+            app.main()
+            executor.assert_called_once_with(GREENHOUSE, self.cfg)
+        self.assertIn("verified_listed", output.getvalue())
+        self.assertNotIn(PRIVATE, output.getvalue())
+
+    def test_cli_refuses_unsafe_config_before_contacting_employer(self):
+        import main as app
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(sys, "argv",
+                                             ["main.py", "recheck-job", GREENHOUSE]))
+            stack.enter_context(patch("main.local_safety.inspect", return_value={
+                "database": "ready", "config": "submission_enabled",
+            }))
+            fetch = stack.enter_context(patch(
+                "main.official_recheck.recheck_saved",
+                side_effect=AssertionError("Do not call employer on unsafe config")))
+            with self.assertRaises(SystemExit):
+                app.main()
+            fetch.assert_not_called()
 
     def test_unknown_job_and_missing_db_do_not_create_records(self):
         seed(self.database)
