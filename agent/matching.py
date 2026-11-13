@@ -58,12 +58,20 @@ def qualifications(description, profile, gpa):
 
     blockers = []
     for sentence in re.split(r'(?<=[.!?])\s+|[\n;]', description):
-        optional = bool(re.search(r'\b(?:preferred|nice to have|desirable|a plus)\b', sentence))
+        optional = bool(re.search(r'\b(?:preferred|nice to have|desirable|desired|a plus)\b', sentence))
         mandatory = bool(re.search(r'\b(?:must|requires?|required)\b', sentence))
         # Pure preferred clauses never block a candidate. Mixed-language
         # clauses can be contradictory; mark them for human review.
         if optional and not mandatory:
             continue
+        # These conditions depend on a verified applicant record or specific
+        # internship completion dates. Expose a review gate instead of assuming
+        # that the candidate has or lacks the requirement.
+        if re.search(r'\b(?:previous|prior)\s+(?:relevant\s+)?internship experience\s+(?:is\s+)?required\b', sentence):
+            blockers.append('Prior internship experience required — confirm verified evidence')
+        if re.search(r'\bgraduat(?:e|ion)\s+within\s+\d{1,2}\s+months?\s+after\s+'
+                     r'(?:the\s+)?(?:completion|conclusion|end)\s+of\s+(?:the\s+)?internship\b', sentence):
+            blockers.append('Graduation relative to internship end — confirm dates')
         for match in GPA.finditer(sentence):
             minimum = float(next(part for part in match.groups() if part is not None))
             if minimum > 4:
