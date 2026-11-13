@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,7 +122,7 @@ def main(argv=None):
     try:
         run(core.ROOT, from_mvp=args.from_mvp, allow_upgrade=args.allow_upgrade,
             initialize_missing=args.initialize_missing, dry_run=args.dry_run)
-    except (InstallBlocked, OSError, ValueError) as error:
+    except (InstallBlocked, OSError, ValueError, sqlite3.Error) as error:
         # These messages contain safe canned advice only; never emit raw
         # tracebacks or profiles/filesystem paths in install status.
         print("Beta install BLOCKED:", str(error))
