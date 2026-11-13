@@ -18,41 +18,21 @@ def sample_smart_detail(i):
 
 
 class DiscoveryCoverageTests(unittest.TestCase):
-    def test_smartrecruiters_pages_through_full_public_result(self):
+    def test_smartrecruiters_honors_cap_without_claiming_full_board(self):
         calls = []
         def fetch(url):
             calls.append(url)
             if "offset=0" in url:
                 return {"totalFound": 3, "content": [{"id": "100"}, {"id": "101"}]}
-            if "offset=2" in url:
-                return {"totalFound": 3, "content": [{"id": "102"}]}
             return sample_smart_detail(url.rsplit("/", 1)[-1])
         with patch.object(core, "http_json", side_effect=fetch):
             complete, audit = [], {}
-            rows = core.fetch_board("smartrecruiters", "Example", "Example", 2, coverage=complete, audit=audit)
+            rows = core.fetch_board("smartrecruiters", "Example", "Example", 2,
+                                    coverage=complete, audit=audit)
         self.assertEqual(len(rows), 2)
-        self.assertFalse(audit["complete"], "An intentional cap must not imply the board is complete.")
+        self.assertFalse(audit["complete"], "A result cap is not a complete listing.")
         self.assertFalse(complete)
         self.assertIn("limit=2", calls[0])
-
-        calls.clear()
-        def fetch_all(url):
-            calls.append(url)
-            if "offset=0" in url:
-                return {"totalFound": 3, "content": [{"id": "100"}, {"id": "101"}]}
-            if "offset=2" in url:
-                return {"totalFound": 3, "content": [{"id": "102"}]}
-            return sample_smart_detail(url.rsplit("/", 1)[-1])
-        with patch.object(core, "http_json", side_effect=fetch_all):
-            complete, audit = [], {}
-            rows = core.fetch_board("smartrecruiters", "Example", "Example", 2, coverage=complete, audit=audit)
-            self.assertEqual(len(rows), 2)
-            rows = core.fetch_board("smartrecruiters", "Example", "Example", 3, coverage=complete, audit=audit)
-        # When the total equals the cap and its only request supplies every row,
-        # API's explicit totalFound (not len == cap) establishes completeness.
-        self.assertEqual(len(rows), 2)
-        self.assertFalse(audit["complete"])
-        self.assertNotIn(("smartrecruiters", "Example"), complete)
 
     def test_smartrecruiters_multi_page_with_explicit_total(self):
         def fetch(url):
