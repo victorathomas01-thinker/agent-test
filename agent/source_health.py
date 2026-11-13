@@ -14,7 +14,8 @@ KINDS = frozenset({"ats", "feed", "employer_site"})
 def check(kind, key, status, records=0, detail=""):
     if kind not in KINDS or status not in STATUSES:
         raise ValueError("Unknown discovery coverage status.")
-    if not isinstance(key, str) or not key or len(key) > 160:
+    if (not isinstance(key, str) or not key or len(key) > 160
+            or "://" in key or any(character in key for character in "\r\n\t")):
         raise ValueError("Invalid public source identifier.")
     if not isinstance(records, int) or records < 0:
         raise ValueError("Negative source record count.")
@@ -31,7 +32,18 @@ def record(checks, started_at, finished_at=None):
     This is the source-coverage ledger, NOT an applications ledger.
     """
     finished_at = finished_at or core.utc_now()
-    entries = list(checks)
+    severity = {"complete": 0, "empty": 1, "partial": 2, "blocked": 3, "error": 4}
+    by_source = {}
+    for raw in checks:
+        row = check(raw["kind"], raw["key"], raw["status"],
+                    raw["records"], raw.get("detail", ""))
+        identity = (row["kind"], row["key"])
+        previous = by_source.get(identity)
+        if previous is None or severity[row["status"]] > severity[previous["status"]]:
+            by_source[identity] = row
+        elif previous is not None and severity[row["status"]] == severity[previous["status"]]:
+            previous["records"] = max(previous["records"], row["records"])
+    entries = list(by_source.values())
     with closing(core.connect()) as con, con:
         con.execute("""CREATE TABLE IF NOT EXISTS discovery_coverage_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
