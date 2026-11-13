@@ -1,0 +1,35 @@
+name: One-time read-only Workday source check
+
+# A deliberately one-time, path-gated probe. Normal pushes and PRs do NOT
+# trigger public network requests. Re-trigger only by explicitly editing
+# this workflow file in its dedicated review branch.
+on:
+  push:
+    branches:
+      - feature/live-source-validation-2026-11-12
+    paths:
+      - .github/workflows/one-time-public-source-smoke.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-time-public-source-smoke
+  cancel-in-progress: true
+
+jobs:
+  verify-public-listings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+      - name: Use Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Probe at most 2 official public Workday sites, 2 listings each
+        run: python -m scripts.probe_public_workday --max-sites 2 --per-site 2
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONUNBUFFERED: '1'
