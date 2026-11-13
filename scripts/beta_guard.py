@@ -122,10 +122,13 @@ def main(argv=None):
     try:
         run(core.ROOT, from_mvp=args.from_mvp, allow_upgrade=args.allow_upgrade,
             initialize_missing=args.initialize_missing, dry_run=args.dry_run)
-    except (InstallBlocked, OSError, ValueError, sqlite3.Error) as error:
-        # These messages contain safe canned advice only; never emit raw
-        # tracebacks or profiles/filesystem paths in install status.
+    except InstallBlocked as error:
+        # InstallBlocked messages are purpose-written without applicant data.
         print("Beta install BLOCKED:", str(error))
+        return 2
+    except (OSError, ValueError, sqlite3.Error):
+        # Database/file errors may include local paths or private filenames.
+        print("Beta install BLOCKED: Local database or verified backup could not be safely accessed.")
         return 2
     return 0
 
