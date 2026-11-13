@@ -21,7 +21,19 @@ def field_metadata(scope):
       const ariaName = node => (node?.getAttribute('aria-labelledby') || '').split(/\\s+/)
         .map(id => labelText(document.getElementById(id))).filter(Boolean).join(' ')
         || node?.getAttribute('aria-label') || '';
-      const label = [...(e.labels || [])].map(labelText).join(' ');
+      // The label of a nested SELECT can include every option's text.
+      // Remove descendant controls from a copy before naming the question,
+      // but keep visible words (including radio/checkbox choice text).
+      const cleanLabel = node => {
+        const copy = node.cloneNode(true);
+        copy.querySelectorAll(
+          'input, textarea, select, button, [role="combobox"], ' +
+          '[role="listbox"], [role="option"], [role="textbox"], ' +
+          '[role="radio"], [role="checkbox"], [role="switch"]'
+        ).forEach(child => child.remove());
+        return copy.textContent.trim();
+      };
+      const label = [...(e.labels || [])].map(cleanLabel).filter(Boolean).join(' ');
       const role = e.getAttribute('role');
       // ARIA-only checkboxes, radio choices and switches do not carry native
       // HTML input validation. Record them as manual custom controls rather
