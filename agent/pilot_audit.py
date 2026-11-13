@@ -61,10 +61,10 @@ def open_readonly(path):
     return con
 
 
-def selected_attempts(con, start=None, through=None, limit=20):
+def selected_attempts(con, since=None, through=None, limit=20):
     if not isinstance(limit, int) or not 1 <= limit <= 1000:
         raise ValueError("Pilot audit supports between 1 and 1000 unique jobs.")
-    first, last = parse_day(start), parse_day(through)
+    first, last = parse_day(since), parse_day(through)
     if first and last and first > last:
         raise ValueError("The first audit date must not follow the last.")
     left = first.isoformat() if first else None
