@@ -9,11 +9,11 @@ MONTH = '|'.join(MONTHS)
 MONTH_YEAR = rf'({MONTH})\s+(20\d{{2}})'
 WINDOW = re.compile(rf'\b(?:graduat\w*|graduation date)[^.;]{{0,45}}?\bbetween\s+{MONTH_YEAR}\s+and\s+{MONTH_YEAR}\b')
 GRADUATE_BY = re.compile(
-    rf'\b(?:applicants\s+)?(?:must|are\s+required\s+to)\s+(?:have\s+)?'
+    rf'\b(?:applicants\s+)?(?:must|are\s+required\s+to)\s+(?:(?:have|be)\s+)?'
     rf'graduat(?:e|ed|ing)\s+(?:by|no\s+later\s+than|on\s+or\s+before)\s+{MONTH_YEAR}\b'
 )
 GRADUATE_AFTER = re.compile(
-    rf'\b(?:applicants\s+)?(?:must|are\s+required\s+to)\s+(?:have\s+)?'
+    rf'\b(?:applicants\s+)?(?:must|are\s+required\s+to)\s+(?:(?:have|be)\s+)?'
     rf'graduat(?:e|ed|ing)\s+(?:no\s+earlier\s+than|on\s+or\s+after)\s+{MONTH_YEAR}\b'
 )
 GPA = re.compile(
@@ -23,6 +23,8 @@ GPA = re.compile(
     r'|\b(\d(?:\.\d+)?)\s+(?:cumulative\s+)?gpa\s*(?:minimum|required)\b'
     r'|\b(?:cumulative\s+)?gpa\s*(?:>=|≥)\s*(\d(?:\.\d+)?)'
     r'|\b(?:cumulative\s+)?gpa\s+(?:of\s+)?at\s+least\s+(\d(?:\.\d+)?)'
+    r'|\b(?:minimum|required)\s+(?:cumulative\s+)?gpa\s+(?:is|must\s+be)\s+(\d(?:\.\d+)?)'
+    r'|\b(?:cumulative\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)\s*\+'
 )
 SKILLS = ('python', 'javascript', 'typescript', 'java', 'sql', 'postgresql', 'linux', 'git',
           'react', 'node.js', 'html', 'css', 'excel', 'power bi', 'tableau', 'azure', 'aws',
