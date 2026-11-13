@@ -68,6 +68,24 @@ def queue_selected():
                        WHERE status IN ('selected','needs_attention')""", (core.utc_now(),))
 
 
+def preview_freshness_blocker(con, job):
+    """Require source review before packaging a previously selected listing.
+
+    Selection/eligibility can predate a later deadline or a stale source.
+    This performs no employer requests and never claims a listing is closed.
+    """
+    metadata = con.execute(
+        "SELECT deadline FROM web_checks WHERE job_id=?", (job['id'],)
+    ).fetchone()
+    candidate = dict(job)
+    candidate['deadline'] = metadata['deadline'] if metadata else ''
+    reasons = risk_reasons(candidate)
+    if (candidate.get('source') not in (None, '', 'manual')
+            and observation_day(candidate.get('last_seen')) is None):
+        reasons.append('Missing dated source observation — verify employer posting')
+    return '; '.join(reasons)
+
+
 def prepare_selected(cfg):
     with closing(core.connect()) as con:
         while (job := claim_selected(con)) is not None:
@@ -80,6 +98,8 @@ def prepare_selected(cfg):
                                                      (job['id'],)).fetchone()
                 ):
                     blocker = job['reason'] or 'Eligibility needs review.'
+                elif (freshness_blocker := preview_freshness_blocker(con, job)):
+                    blocker = 'Source recheck required before preview: ' + freshness_blocker
                 else:
                     folder, version = prepare_package(resume_file(cfg), dict(job))
                     master = folder / ('master' + resume_file(cfg).suffix.lower())
