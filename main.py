@@ -273,7 +273,8 @@ def main():
                 rows = pilot_audit.selected_attempts(con, args.since, args.through,
                                                     args.limit, offline_only=args.offline_only)
                 report = pilot_audit.summarize(rows, args.expected)
-            pilot_audit.render(report, args.since, args.through)
+            pilot_audit.render(report, args.since, args.through,
+                               offline_only=args.offline_only)
         except (OSError, ValueError) as error:
             parser.error('Pilot audit unavailable (' + type(error).__name__ +
                          '). Check database path and date range.')
