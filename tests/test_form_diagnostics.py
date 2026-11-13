@@ -3,6 +3,8 @@ import io
 import json
 import tempfile
 import unittest
+from threading import Thread
+from urllib.request import urlopen
 from contextlib import closing, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
@@ -72,6 +74,32 @@ class FormDiagnosticsTests(unittest.TestCase):
                     self.assertEqual(form_diagnostics.summarize(con)["latest_jobs"], 0)
                     with self.assertRaisesRegex(ValueError, "Invalid"):
                         form_diagnostics.latest_reviews(con, 0)
+
+    def test_dashboard_aggregate_endpoint_is_readonly_and_does_not_expose_labels(self):
+        from agent.dashboard import server_for
+        cfg = core.with_defaults({})
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(core, "DB", Path(temp) / "local.sqlite3"):
+                with closing(core.connect()) as con, con:
+                    con.execute("INSERT INTO attempts(job_id,outcome,details) VALUES (?,?,?)",
+                                ("sample", *review(field("no verified answer"))))
+                server, _ = server_for(cfg, 0)
+                with server:
+                    worker = Thread(target=server.serve_forever, daemon=True)
+                    worker.start()
+                    try:
+                        with urlopen(f"http://127.0.0.1:{server.server_port}/api/form-audit",
+                                     timeout=5) as response:
+                            payload = json.load(response)
+                        self.assertEqual(payload["required_blockers"]["missing_verified_answer"], 1)
+                        self.assertNotIn("PRIVATE_PERSONAL_FIELD_LABEL", str(payload))
+                        with urlopen(f"http://127.0.0.1:{server.server_port}/",
+                                     timeout=5) as response:
+                            page = response.read().decode("utf-8")
+                        self.assertIn("Form Readiness", page)
+                    finally:
+                        server.shutdown()
+                        worker.join(timeout=5)
 
     def test_expired_signin_and_errors_are_distinct_from_complete_previews(self):
         with tempfile.TemporaryDirectory() as temp:
