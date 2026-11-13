@@ -47,6 +47,10 @@ EXPECTED_COLUMNS = {
 }
 
 
+# The source-coverage ledger is created lazily by discovery, not init.
+OPTIONAL_TABLES = {"discovery_coverage_runs", "discovery_coverage_checks"}
+
+
 def readonly_connection(filename: Path) -> sqlite3.Connection:
     path = Path(filename).expanduser().resolve()
     if not path.is_file():
@@ -113,13 +117,13 @@ def inspect(database=DB, config=CONFIG):
                 result["database"] = "corrupt_or_unreadable"
                 return result
             missing, conflicts = _schema_report(con)
+            required_missing = set(missing) - OPTIONAL_TABLES
             result["existing_known_tables"] = len(EXPECTED_COLUMNS) - len(missing)
-            result["missing_new_tables"] = len(missing)
+            result["missing_new_tables"] = len(required_missing)
             result["incompatible_tables"] = len(conflicts)
-            if conflicts or ("jobs" in missing and "attempts" not in missing) or (
-                    "attempts" in missing and "jobs" not in missing):
+            if conflicts or "jobs" in missing or "attempts" in missing:
                 result["database"] = "incompatible"
-            elif missing:
+            elif required_missing:
                 result["database"] = "upgradeable"
             else:
                 result["database"] = "ready"
@@ -178,9 +182,9 @@ def backup_local(database=DB, *, root=ROOT):
         with closing(readonly_connection(temporary)) as verify:
             if verify.execute("PRAGMA integrity_check(1)").fetchone()[0] != "ok":
                 raise ValueError("Backup verification failed; no backup published.")
-            tables = verify.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
-            if tables < 2:
+            existing = {row["name"] for row in verify.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            if not {"jobs", "attempts"} <= existing:
                 raise ValueError("Backup did not contain the expected application tables.")
         if final.exists():
             raise ValueError("Refusing to replace an existing backup.")
