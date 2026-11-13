@@ -16,6 +16,9 @@
 
 ## Verified evidence
 
+- The integrated isolated acceptance check passed on Windows: fresh CLI init, synthetic 20-job historical audit, local SQLite backup/restore, a legacy four-table expansion and two public-metadata SQL market snapshots. No live employer access or user database: https://github.com/victorathomas01-thinker/agent-test/actions/runs/43364014263. Repeat with `python -m scripts.integration_acceptance`.
+- The historical audit now supports `--offline-only` so a later failed login does not replace the detached preview from the original pilot.
+
 - Current integrated candidate was verified by Windows GitHub Actions (119 tests passing on commit `0013e437`): https://github.com/victorathomas01-thinker/agent-test/actions/runs/43363212793
 - Two structured Workday descriptions each were read from public Protiviti and Wells Fargo sources after a fix, in intentionally partial discovery checks: https://github.com/victorathomas01-thinker/agent-test/actions/runs/43360677416
 - Four Duolingo public Greenhouse and four Zoox public Lever HTTPS posting URLs were accepted in a separate intentionally partial source check: https://github.com/victorathomas01-thinker/agent-test/actions/runs/43360979050
@@ -34,10 +37,9 @@ These source runs did not verify that any sampled job is still open, or that an 
 
 ## Safe next review sequence
 
-- Validate config/example schema and data migration against a disposable SQLite copy, with all credentials and personal data excluded.
-- Run `python main.py benchmark-requirements` and the full synthetic suite on a Windows machine.
-- Open the local app only against a dedicated test profile until historical audit and backup/restore checks pass.
-- If the existing local SQLite pilot database is still available, run `python main.py pilot-audit` with the original known pilot date window, and inspect the aggregate blocker distribution **locally only**.
+- **Completed for synthetic data:** clean CLI initialization, basic four-table legacy schema expansion, backup/restore, historical audit, market snapshot history and the full Windows synthetic suite. These prove an isolated code path, not the full range of possible historical databases.
+- **Still needed:** test a deliberately scrubbed, locally backed-up copy of the actual historical schema and perform an attended manual UI check on the integrated version before any release.
+- If the existing local SQLite pilot database is still available, run `python main.py pilot-audit --offline-only` with the original known pilot date window, and inspect the aggregate blocker distribution **locally only**.
 - Build a separate blind requirements evaluation on recent open public postings; do not treat author-labeled fixtures as hiring-accuracy estimates.
 - Keep live form submission user-operated only, with original posting identity, reviewed résumé package and explicit approval. Do not activate unattended submission or automated application traffic.
 
