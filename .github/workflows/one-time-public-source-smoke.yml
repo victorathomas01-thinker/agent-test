@@ -33,3 +33,19 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
           PYTHONUNBUFFERED: '1'
+
+  verify-official-ats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+      - name: Use Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Probe official Greenhouse and Lever public boards (4 URLs each max)
+        run: python -m scripts.probe_public_ats
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONUNBUFFERED: '1'
