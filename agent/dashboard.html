@@ -40,7 +40,7 @@ label{display:inline-flex;gap:6px;align-items:center}#message{min-height:1.2em;c
 'use strict';
 const byId = id => document.getElementById(id);
 const token = '__SESSION_TOKEN__';
-const views = ['All Jobs', 'Top Matches', 'Bridge Jobs', 'Selected', 'Offline Previews', 'Ready to Review', 'Needs Attention', 'Form Readiness', 'Applications', 'History'];
+const views = ['All Jobs', 'Top Matches', 'Bridge Jobs', 'Selected', 'Offline Previews', 'Ready to Review', 'Needs Recheck', 'Needs Attention', 'Form Readiness', 'Applications', 'History'];
 let view = views[0], page = 0, jobs = [], loading = false;
 const size = 25;
 function element(tag, content, parent) {
@@ -70,6 +70,7 @@ function filtered() {
     if (view === 'Selected' && !job.preparation) return false;
     if (view === 'Offline Previews' && job.preparation !== 'offline_preview') return false;
     if (view === 'Ready to Review' && job.preparation !== 'live_review') return false;
+    if (view === 'Needs Recheck' && job.recheck_status !== 'needs_recheck') return false;
     if (view === 'Needs Attention' && job.preparation !== 'needs_attention' && job.status !== 'submission_pending') return false;
     if (view === 'Applications' && !terminal.has(job.status)) return false;
     if (category && job.category !== category) return false;
@@ -131,6 +132,26 @@ function render() {
     element('p', [job.company,job.location,job.category,'Score ' + job.score,job.salary,job.employment_type].filter(Boolean).join(' · '), card);
     element('p', [job.status,job.preparation,job.verification,job.source,job.last_seen,job.published_at,job.deadline].filter(Boolean).join(' · '), card);
     if (job.blocker || job.reason) element('p', job.blocker || job.reason, card);
+    if (job.recheck_status === 'needs_recheck') {
+      element('p', 'Source verification needed: ' + job.recheck_reasons.join('; '), card);
+      if (job.can_recheck) {
+        const verify = element('button','Recheck this public posting',card);
+        verify.addEventListener('click', async () => {
+          verify.disabled = true;
+          say('Checking one official public listing; no application request will be sent.');
+          try {
+            const result = await request('/api/recheck',{id:job.id});
+            await refresh();
+            say('Official public posting recheck: ' + result.status +
+              (result.updated ? '. Saved listing refreshed; review eligibility again.' :
+               '. No saved listing information changed.'));
+          } catch(error) { say(error.message); }
+          finally { verify.disabled = false; }
+        });
+      } else {
+        element('p','This source needs manual confirmation on the employer website.',card);
+      }
+    }
     if (job.can_override) {
       const override = element('button', job.override ? 'Remove offline override' : 'Allow offline preparation', card);
       override.onclick = () => action('/api/override', {id:job.id,enabled:!job.override});
