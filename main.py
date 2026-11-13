@@ -4,6 +4,7 @@ from contextlib import closing
 import json
 from pathlib import Path
 import re
+import sqlite3
 import sys
 
 from agent import core
