@@ -107,6 +107,13 @@ def seed(db):
                 (identifier, DAY + "T12:00:00+00:00", "needs_review",
                  json.dumps(payload)),
             )
+        # A later login failure must not erase the prior detached preview
+        # when reconstructing the original pilot's offline blockers.
+        con.execute(
+            "INSERT INTO attempts(job_id,at,outcome,details) VALUES (?,?,?,?)",
+            ("greenhouse:synthetic:0", "2026-11-12T12:00:00+00:00",
+             "needs_review", "Sign-in needed."),
+        )
         con.execute(
             """INSERT INTO verified_facts(key,value,source,scope,verified_at,active)
                VALUES ('synthetic_private','' || ?, 'test', 'local', ?,1)""",
@@ -225,7 +232,13 @@ def main():
         seed(db)
         original_checksum = hashlib.sha256(db.read_bytes()).hexdigest()
         output = run(app, "main.py", "pilot-audit", "--since", DAY,
-                     "--through", DAY, "--limit", "20", "--expected", "20")
+                     "--through", DAY, "--offline-only",
+                     "--limit", "20", "--expected", "20")
+        recovered = run(app, "main.py", "pilot-audit", "--offline-only",
+                        "--limit", "20", "--expected", "20")
+        if "Examined 20 unique jobs" not in recovered or (
+                "Offline previews with unresolved required fields: 20" not in recovered):
+            raise AssertionError("Later sign-in failure displaced historical offline previews.")
         if "Examined 20 unique jobs" not in output or                 "Offline previews with unresolved required fields: 20" not in output:
             raise AssertionError("Pilot audit failed the 20-job synthetic scenario.")
         if "matching the expected" not in output.casefold():
@@ -240,7 +253,7 @@ def main():
         legacy_upgrade(app)
         with closing(sqlite3.connect(db)) as con:
             count = con.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]
-        if count != 21:
+        if count != 22:
             raise AssertionError("Historical applicant attempts changed during acceptance.")
         print("PASS — isolated clean CLI init and live-submit safeguard")
         print("PASS — 20-job synthetic historical pilot audit; read-only source unchanged")
