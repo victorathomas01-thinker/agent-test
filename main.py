@@ -7,6 +7,7 @@ import re
 import sys
 
 from agent import core
+from agent import source_health
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
@@ -31,14 +32,21 @@ def positive_integer(value):
 
 def discover_jobs(cfg, summary=None):
     started = core.utc_now()
-    coverage = []
-    jobs, errors = core.discover(cfg, coverage)
+    coverage, source_checks = [], []
+    jobs, errors = core.discover(cfg, coverage, source_checks)
     new = core.store_jobs(jobs, cfg)
     expired = core.expire_unlisted(coverage, jobs, started)
+    audit_id = source_health.record(source_checks, started)
     employers = len({job['id'].rsplit(':', 1)[0] for job in jobs})
+    statuses = {status: sum(row['status'] == status for row in source_checks)
+                for status in sorted({row['status'] for row in source_checks})}
     if summary is not None:
-        summary.update(postings=len(jobs), new=new, boards=employers, expired=expired, source_errors=errors)
+        summary.update(postings=len(jobs), new=new, boards=employers, expired=expired,
+                       source_errors=errors, source_coverage=statuses, coverage_run=audit_id)
     print(f'Fetched {len(jobs)} listings from {employers} employer boards, {new} new.')
+    print(f'Source audit #{audit_id}: '
+          + ', '.join(f'{key}={count}' for key, count in statuses.items())
+          + '. Run coverage for details.')
     if expired:
         print(f'{expired} listings are no longer shown on complete public boards.')
     for error in errors:
@@ -154,6 +162,8 @@ def main():
     commands.add_parser('scan-receipts', help='Match files from the local receipt inbox to pending jobs.')
     queue = commands.add_parser('queue', help='Show previews and submissions that need your review.')
     queue.add_argument('--limit', type=positive_integer, default=20)
+    coverage_cmd = commands.add_parser('coverage', help='Inspect the last local discovery source audit.')
+    coverage_cmd.add_argument('--limit', type=positive_integer, default=50)
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
     login = commands.add_parser('sign-in', help='Open a dedicated Indeed browser profile for manual sign-in.')
     login.add_argument('portal', choices=['indeed'])
@@ -323,11 +333,17 @@ def main():
     if args.command == 'discover':
         discover_jobs(cfg)
         return
+    if args.command == 'coverage':
+        source_health.print_latest(min(args.limit, 500))
+        return
     if args.command == 'discover-web':
         seeds = json.loads(args.sources.read_text(encoding='utf-8-sig'))
-        jobs, errors = discover_sites(seeds, min(args.budget, 100), core.plain)
+        checks = []
+        started = core.utc_now()
+        jobs, errors = discover_sites(seeds, min(args.budget, 100), core.plain, report=checks)
         new = core.store_jobs(jobs, cfg)
-        print(f'Employer site discovery | {len(jobs)} listings | {new} new')
+        audit_id = source_health.record(checks, started)
+        print(f'Employer site discovery | {len(jobs)} listings | {new} new | source audit #{audit_id}')
         for error in errors:
             print(f'SOURCE ERROR {error}')
         if errors and not jobs:
