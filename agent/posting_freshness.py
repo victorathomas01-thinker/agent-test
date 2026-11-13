@@ -6,7 +6,6 @@ requires another verified source read before unattended prep or attended review.
 import calendar
 import re
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 MONTHS = '|'.join(calendar.month_name[1:]) + '|' + '|'.join(calendar.month_abbr[1:])
 ENGLISH_DATE = rf'(?:{MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+20\d{{2}}'
@@ -86,7 +85,7 @@ def observation_day(value):
 def risk_reasons(job, *, today=None, stale_after_days=14):
     """Return reasons to verify the job, not claims that it has closed."""
     if today is None:
-        today = datetime.now(ZoneInfo('America/New_York')).date()
+        today = datetime.now(timezone.utc).date()
     if not isinstance(today, date) or isinstance(today, datetime):
         raise ValueError("Expected a calendar date.")
     if not isinstance(stale_after_days, int) or stale_after_days < 1:
@@ -123,9 +122,12 @@ def aggregate(con, *, today=None):
                               ('submitted','submission_pending','assessment',
                                'interview','offer','rejected','withdrawn')""")
     stats = {'active_or_unconfirmed': 0, 'passed_deadline': 0,
-             'stale_source': 0, 'conflicting_deadline': 0}
+             'stale_source': 0, 'conflicting_deadline': 0,
+             'missing_source_timestamp': 0}
     for row in rows:
         stats['active_or_unconfirmed'] += 1
+        if row['source'] not in (None, '', 'manual') and observation_day(row['last_seen']) is None:
+            stats['missing_source_timestamp'] += 1
         signals = risk_reasons(dict(row), today=today)
         if any('deadline passed' in reason for reason in signals):
             stats['passed_deadline'] += 1
