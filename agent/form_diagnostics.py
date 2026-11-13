@@ -26,6 +26,32 @@ CATEGORIES = {
     "could not identify and fill applicant name or resume and email": "identity_or_resume_unresolved",
 }
 
+# Fixed, privacy-safe remediation guidance. Never incorporate employer form
+# wording or applicant-supplied answers into these public-facing summaries.
+BLOCKER_ACTIONS = {
+    "missing_verified_answer": "Confirm the exact answer with the applicant before retrying.",
+    "radio_choice_ambiguous": "Compare employer options to an explicitly verified answer; do not guess.",
+    "dropdown_choice_ambiguous": "Review the exact employer options and previously verified answer.",
+    "manual_question_or_choice": "Requires human review of the actual employer question.",
+    "checkbox_attestation_or_choice": "Applicant must review and select any required attestation personally.",
+    "checkbox_group_manual_review": "Applicant must inspect the checkbox group; never auto-agree.",
+    "unsupported_custom_control": "Requires a tested employer-specific control handler or manual review.",
+    "resume_not_ready": "Verify that the local résumé file exists and uses an accepted format.",
+    "browser_fill_error": "Inspect the form's input behavior in a safe offline fixture.",
+    "validation_error": "Review the field's validation and applicant-approved answer.",
+    "later_step_unchecked": "Additional employer steps remain unchecked; manual progression required.",
+    "identity_or_resume_unresolved": "Confirm contact/resume field recognition in an isolated fixture.",
+    "login_required": "Applicant must sign in themselves; do not bypass an account gate.",
+    "form_not_found": "Manual employer-page review; do not infer readiness.",
+    "page_unavailable": "Recheck the official employer page before attempting preparation.",
+    "posting_unavailable": "Verify the official posting is still available before applying.",
+    "browser_preview_error": "Investigate local browser failure using a synthetic fixture.",
+    "unsupported_url": "Replace with an exact, verified HTTPS employer application URL.",
+    "other_manual_review": "Human review needed; do not infer applicant information.",
+    "unknown": "Unknown required-field blocker; manual review needed.",
+}
+
+
 NON_JSON = (
     ("Sign-in needed.", "login_required"),
     ("Could not locate an application form", "form_not_found"),
@@ -108,6 +134,10 @@ def summarize(con, limit=500):
         "outcomes": dict(sorted(outcomes.items())),
         "required_blockers": dict(sorted(required_field_categories.items())),
         "jobs_affected": dict(sorted(jobs_with_category.items())),
+        "recommended_next_actions": {
+            category: BLOCKER_ACTIONS.get(category, BLOCKER_ACTIONS["unknown"])
+            for category in sorted(required_field_categories)
+        },
     }
 
 
@@ -129,5 +159,6 @@ def print_report(limit=500):
     for category, count in sorted(report["required_blockers"].items(),
                                   key=lambda item: (-item[1], item[0])):
         print(f"  {category}: {count} fields / {report['jobs_affected'][category]} jobs")
+        print(f"    Next: {report['recommended_next_actions'][category]}")
     print("No application was submitted. Category totals reflect stored local "
           "previews, not employer live-form acceptance.")
