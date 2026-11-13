@@ -20,6 +20,7 @@ from agent.sessions import sign_in
 from agent.submission import official_job_url, release_submission, review_submission
 from agent.dashboard import serve
 from agent.careers import discover_sites
+from agent.workday import select_workday_sources
 from agent.facts import effective_answers, revoke_fact, store_fact, sync_config_facts
 from agent.live_workbench import available_jobs, review_tabs
 
@@ -210,6 +211,12 @@ def main():
     web = commands.add_parser('discover-web', help='Discover jobs on configured public employer websites.')
     web.add_argument('--sources', type=Path, default=core.ROOT / 'examples' / 'careers.json')
     web.add_argument('--budget', type=positive_integer, default=10)
+    workday = commands.add_parser('discover-workday',
+        help='Read a bounded, opt-in public Workday employer source bank.')
+    workday.add_argument('--sources', type=Path,
+        default=core.ROOT / 'examples' / 'charlotte_workday_sites.json')
+    workday.add_argument('--max-sites', type=positive_integer, default=3)
+    workday.add_argument('--per-site', type=positive_integer, default=15)
     dashboard = commands.add_parser('serve', help='Open the interactive local dashboard server.')
     dashboard.add_argument('--port', type=int, default=0)
     tabs = commands.add_parser('review-selected', help='Open a specifically approved batch in Microsoft Edge.')
@@ -276,7 +283,7 @@ def main():
     cfg = core.load_config()
     if getattr(args, 'strategy', None):
         cfg['preferences']['strategy'] = args.strategy
-    if args.command in {'discover', 'discover-web', 'run', 'list', 'batch', 'queue', 'dashboard', 'serve', 'explain'}:
+    if args.command in {'discover', 'discover-web', 'discover-workday', 'run', 'list', 'batch', 'queue', 'dashboard', 'serve', 'explain'}:
         evidence = cfg.get('_candidate_profile', {})
         cfg['_candidate_evidence'] = ' '.join(evidence.get('skills', []) + evidence.get('projects', []))
         source = resume_file(cfg)
@@ -341,6 +348,29 @@ def main():
         return
     if args.command == 'form-audit':
         form_diagnostics.print_report(min(args.limit, 5000))
+        return
+    if args.command == 'discover-workday':
+        if args.max_sites > 50 or args.per_site > 60:
+            parser.error('At most 50 Workday sites and 60 listings per site are supported.')
+        try:
+            sources = json.loads(args.sources.read_text(encoding='utf-8-sig'))
+            sites = select_workday_sources(sources, args.max_sites)
+        except (OSError, ValueError) as error:
+            parser.error('Could not load validated Workday sources (' + type(error).__name__ + ').')
+        if not sites:
+            print('No Workday career sites selected; no requests made.')
+            return
+        print(f'Read-only public Workday discovery: {len(sites)} sources, '
+              f'up to {args.per_site} stored listings per source.')
+        selected_discovery = {
+            **cfg['discovery'],
+            'greenhouse_boards': [], 'lever_sites': [], 'ashby_boards': [],
+            'smartrecruiters_companies': [], 'employer_feeds': [],
+            'career_sites': [], 'max_discovered_boards': 0,
+            'workday_sites': sites,
+            'max_workday_per_site': args.per_site,
+        }
+        discover_jobs({**cfg, 'discovery': selected_discovery})
         return
     if args.command == 'discover-web':
         seeds = json.loads(args.sources.read_text(encoding='utf-8-sig'))
