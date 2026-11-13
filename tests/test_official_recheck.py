@@ -237,11 +237,19 @@ class SinglePostingRecheckTests(unittest.TestCase):
         custom = "https://careers.duolingo.com/jobs/123?gh_jid=123"
         ident = "greenhouse:duolingo:123"
         seed(self.database, job_id=ident, url=custom)
-        result = self.recheck(ident, fetch=lambda url: details_greenhouse(
-            absolute_url=custom))
-        self.assertEqual(result["status"], "listing_identity_or_metadata_mismatch")
-        # A source may not claim success with a different board token even if
-        # it uses an explicitly approved company URL; source id is checked.
+        def read(url):
+            self.assertEqual(
+                url, "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs/123?content=true")
+            return details_greenhouse(absolute_url=custom)
+        result = self.recheck(ident, fetch=read)
+        self.assertEqual(result["status"], "verified_listed")
+        self.assertTrue(result["updated"])
+        self.assertEqual(row(self.database, ident)["url"], custom)
+        self.database.unlink()
+        seed(self.database, job_id=ident, url=custom)
+        self.cfg["discovery"]["greenhouse_custom_hosts"] = {}
+        result = self.recheck(ident, fetch=lambda url: self.fail("Unapproved external site"))
+        self.assertEqual(result["status"], "unsupported_or_unsafe_source")
         self.assertEqual(row(self.database, ident)["last_seen"], "2026-10-01T00:00:00+00:00")
 
     def test_redirects_and_cross_origin_requests_are_never_followed(self):
@@ -249,11 +257,11 @@ class SinglePostingRecheckTests(unittest.TestCase):
             "http://api.lever.co/v0/postings/example/id",
             "https://api.lever.co.evil.test/jobs",
             "https://user@api.lever.co/v0/postings/example/id",
+            "https://api.lever.co/anything-else",
+            "https://boards-api.greenhouse.io/v1/boards/example/jobs/123?other=true",
         ]:
             with self.subTest(url=url), self.assertRaises(ValueError):
                 official_recheck.public_api_json(url)
-        self.assertIsNone(official_recheck.DenyRedirects().redirect_request(
-            None, None, 302, "", {}, "https://api.lever.co/other")) if False else None
         with self.assertRaises(ValueError):
             official_recheck.DenyRedirects().redirect_request(
                 None, None, 302, "", {}, "https://example.invalid/private")
