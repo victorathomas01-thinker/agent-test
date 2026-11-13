@@ -290,6 +290,22 @@ def main():
             raise SystemExit(2)
         return
 
+    if args.command == 'posting-audit':
+        # Read-only like pilot-audit: never invoke core.connect() or
+        # effective_answers(), both of which can update the local schema/facts.
+        try:
+            with closing(pilot_audit.open_readonly(core.DB)) as con:
+                totals = posting_freshness.aggregate(con)
+        except (OSError, ValueError, sqlite3.Error):
+            parser.error('Posting audit requires an existing compatible local database. Run doctor first.')
+        print('Unsubmitted job records:', totals['active_or_unconfirmed'])
+        print('Explicitly passed deadline, recheck required:', totals['passed_deadline'])
+        print('Source not seen in over 14 days:', totals['stale_source'])
+        print('Conflicting explicit closing dates:', totals['conflicting_deadline'])
+        print('Public records with no dated observation:', totals['missing_source_timestamp'])
+        print('These are review warnings, not independently verified job closures.')
+        return
+
     if args.command == 'pilot-audit':
         try:
             with closing(pilot_audit.open_readonly(args.database)) as con:
@@ -398,16 +414,6 @@ def main():
         return
     if args.command == 'form-audit':
         form_diagnostics.print_report(min(args.limit, 5000))
-        return
-    if args.command == 'posting-audit':
-        with closing(core.connect()) as con:
-            totals = posting_freshness.aggregate(con)
-        print('Unsubmitted job records:', totals['active_or_unconfirmed'])
-        print('Explicitly passed deadline, recheck required:', totals['passed_deadline'])
-        print('Source not seen in over 14 days:', totals['stale_source'])
-        print('Conflicting explicit closing dates:', totals['conflicting_deadline'])
-        print('Public records with no dated observation:', totals['missing_source_timestamp'])
-        print('These are review warnings, not independently verified job closures.')
         return
     if args.command == 'discover-workday':
         if args.max_sites > 50 or args.per_site > 60:
