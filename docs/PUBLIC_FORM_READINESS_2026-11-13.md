@@ -33,6 +33,12 @@ A third fixture exercises aria-required custom checkbox, radios and switch contr
 
 None of these synthetic fixtures is an applicant's genuine employer application. Even a synthetic `prepared` result is **only a detached current-step assessment**, not proof that the live employer form is ready to submit.
 
+## Local form-readiness dashboard improvements
+
+The existing `python main.py form-audit` summary and the dashboard's **Form Readiness** view now report a fixed next-step recommendation for each recorded blocker category, ordered by affected field counts. This does not reveal the employer's original question, applicant answers, identifiers, résumé text, or portal details. In particular, categories such as `checkbox_attestation_or_choice` and `checkbox_group_manual_review` explicitly require applicant review instead of an auto-check; `unsupported_custom_control` requires a tested site-specific offline mechanism or manual handling; `resume_not_ready` and `missing_verified_answer` identify what information must be provided locally.
+
+The recommendations are **static**, not generated from potentially private form text. They help prioritize fixes when local real attempt records become accessible, but they do not mean any of the original 20 pilot forms was successfully prepared.
+
 ## Practical next release gates
 
 1. Run `python main.py doctor` and `python main.py pilot-audit --offline-only` on the user's own local historical database *when available*. We still cannot diagnose the original 20 actual form attempts from GitHub summary data alone.
