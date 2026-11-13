@@ -68,7 +68,7 @@ class PreparationTest(unittest.TestCase):
             jobs = core.fetch_board('smartrecruiters', 'Example', 'Example', 50)
         self.assertEqual(jobs[0]['location'], 'Charlotte, NC')
         self.assertIn('Python', jobs[0]['description'])
-        self.assertIn('limit=12', fetch.call_args_list[0].args[0])
+        self.assertIn('limit=50', fetch.call_args_list[0].args[0])
 
     def test_only_complete_board_scans_expire_old_unsubmitted_jobs(self):
         with tempfile.TemporaryDirectory() as temporary:
