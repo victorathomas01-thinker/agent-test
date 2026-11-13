@@ -12,6 +12,8 @@ from .priority import classify, rank_job
 UNCERTAIN = {
     'Location missing — review', 'Location outside preferred area — review',
     'May require completed degree — manually review', 'Below match threshold',
+    'Prior internship experience required — confirm verified evidence',
+    'Graduation relative to internship end — confirm dates',
 }
 
 
