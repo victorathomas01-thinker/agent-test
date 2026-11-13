@@ -20,7 +20,7 @@ GRADUATE_AFTER = re.compile(
     rf'graduat(?:e|ed|ing)\s+(?:no\s+earlier\s+than|on\s+or\s+after)\s+{MONTH_YEAR}\b'
 )
 NOT_GRADUATING_BEFORE = re.compile(
-    rf'\bnot\s+graduat(?:e|ing)\s+before\s+{MONTH_YEAR}\b'
+    rf'\b(?:must\s+)?not\s+graduat(?:e|ing)\s+before\s+{MONTH_YEAR}\b'
 )
 GRADUATE_OR_LATER = re.compile(
     rf'\bmust\s+graduat(?:e|ing)\s+(?:in|on)?\s*{MONTH_YEAR}\s+or\s+later\b'
@@ -36,7 +36,7 @@ GPA = re.compile(
     r'|\b(?:overall\s+|cumulative\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)\s*\+'
 )
 SCOPE_HEADING = re.compile(
-    r'\b(required qualifications?|minimum qualifications?|basic qualifications?|'
+    r'\b(required qualifications?|minimum qualifications?|basic(?:/required)? qualifications?|'
     r'desired qualifications?|preferred qualifications?|'
     r'additional requirements?|eligibility requirements?|'
     r'job expectations?|educational requirements?|'
