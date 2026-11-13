@@ -177,6 +177,8 @@ def main():
     historical.add_argument('--through', metavar='YYYY-MM-DD')
     historical.add_argument('--limit', type=positive_integer, default=20)
     historical.add_argument('--expected', type=positive_integer, default=20)
+    historical.add_argument('--offline-only', action='store_true',
+                            help='Reconstruct detached previews, ignoring later non-preview attempts.')
     commands.add_parser('benchmark-requirements',
         help='Run source-linked fictional-profile eligibility regression checks.')
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
@@ -268,7 +270,8 @@ def main():
     if args.command == 'pilot-audit':
         try:
             with closing(pilot_audit.open_readonly(args.database)) as con:
-                rows = pilot_audit.selected_attempts(con, args.since, args.through, args.limit)
+                rows = pilot_audit.selected_attempts(con, args.since, args.through,
+                                                    args.limit, offline_only=args.offline_only)
                 report = pilot_audit.summarize(rows, args.expected)
             pilot_audit.render(report, args.since, args.through)
         except (OSError, ValueError) as error:
