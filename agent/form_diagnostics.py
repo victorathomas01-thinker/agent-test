@@ -14,6 +14,8 @@ CATEGORIES = {
     "no unique radio option for a verified answer": "radio_choice_ambiguous",
     "no unique matching dropdown option": "dropdown_choice_ambiguous",
     "requires manual input": "manual_question_or_choice",
+    "checkbox requires explicit applicant review": "checkbox_attestation_or_choice",
+    "checkbox group requires explicit applicant review": "checkbox_group_manual_review",
     "custom control requires manual input": "unsupported_custom_control",
     "verified choice available, selection requires manual input": "unsupported_custom_control",
     "resume file missing or unsupported": "resume_not_ready",
