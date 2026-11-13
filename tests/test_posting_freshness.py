@@ -192,11 +192,12 @@ class PostingFreshnessTests(unittest.TestCase):
                     )
             before = database.read_bytes()
             output = io.StringIO()
+            original_open = pilot_audit.open_readonly
             with ExitStack() as stack:
                 stack.enter_context(patch.object(sys, "argv", ["main.py", "posting-audit"]))
                 stack.enter_context(patch(
                     "main.pilot_audit.open_readonly",
-                    side_effect=lambda _: pilot_audit.open_readonly(database)))
+                    side_effect=lambda _: original_open(database)))
                 stack.enter_context(patch.object(
                     core, "connect", side_effect=AssertionError("Unexpected schema write")))
                 stack.enter_context(patch.object(
