@@ -128,7 +128,7 @@ class LocalPreflightTests(unittest.TestCase):
             before = db.read_bytes()
             out = local_safety.backup_local(db, root=root)
             self.assertTrue(out.exists())
-            self.assertTrue(out.is_relative_to(root / "private" / "backups"))
+            self.assertTrue(out.resolve().is_relative_to((root / "private" / "backups").resolve()))
             self.assertEqual(db.read_bytes(), before)
             with closing(sqlite3.connect(out)) as con:
                 self.assertEqual(con.execute("PRAGMA integrity_check").fetchone()[0], "ok")
