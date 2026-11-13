@@ -6,7 +6,8 @@ from time import monotonic
 from .core import ROOT, add_attempt, answer_for, valid_application_url
 from .sessions import requires_sign_in
 
-FIELDS = 'input, textarea, select, [role="combobox"], [role="listbox"], [role="textbox"]'
+FIELDS = ('input, textarea, select, [role="combobox"], [role="listbox"], '
+          '[role="textbox"], [role="checkbox"], [role="radio"], [role="switch"]')
 SUPPORTED = {'text', 'email', 'tel', 'url', 'number', 'textarea', 'select-one'}
 IDENTITY_FIELDS = (
     'input[type=email], input[autocomplete=email], input[name*=email i], input[id=email i], '
@@ -22,7 +23,11 @@ def field_metadata(scope):
         || node?.getAttribute('aria-label') || '';
       const label = [...(e.labels || [])].map(labelText).join(' ');
       const role = e.getAttribute('role');
-      const custom = ['combobox', 'listbox', 'textbox'].includes(role) && e.tagName !== 'SELECT';
+      // ARIA-only checkboxes, radio choices and switches do not carry native
+      // HTML input validation. Record them as manual custom controls rather
+      // than silently deciding a detached preview is ready.
+      const custom = ['combobox', 'listbox', 'textbox', 'checkbox', 'radio', 'switch']
+        .includes(role) && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName);
       const group = ['radio', 'checkbox'].includes(e.type) &&
         e.closest('fieldset, [role="radiogroup"], [role="group"]');
       const listbox = document.getElementById(e.getAttribute('aria-controls') || '');
@@ -35,7 +40,8 @@ def field_metadata(scope):
         label: ariaName(e) || label || e.placeholder || '',
         group: group ? elements.findIndex(node => group.contains(node)) : -1,
         question: group ? ariaName(group) || labelText(group.querySelector(':scope > legend')) : '',
-        required: e.required || !!e.closest('[aria-required="true"]')
+        required: e.required || e.getAttribute('aria-required') === 'true'
+          || !!e.closest('[aria-required="true"]')
           || /\\*\\s*$/.test(ariaName(e) || label)
           || !!group && /\\*\\s*$/.test(labelText(group.querySelector(':scope > legend'))),
         visible: !!e.getClientRects().length && getComputedStyle(e).visibility === 'visible'
