@@ -406,6 +406,7 @@ def main():
         print('Explicitly passed deadline, recheck required:', totals['passed_deadline'])
         print('Source not seen in over 14 days:', totals['stale_source'])
         print('Conflicting explicit closing dates:', totals['conflicting_deadline'])
+        print('Public records with no dated observation:', totals['missing_source_timestamp'])
         print('These are review warnings, not independently verified job closures.')
         return
     if args.command == 'discover-workday':
@@ -530,7 +531,9 @@ def main():
                                  WHERE j.id=?""", (args.job_id,)).fetchone()
             if job is None:
                 parser.error('Job ID not found.')
-            if job['status'] == 'expired' or posting_freshness.risk_reasons(dict(job)):
+            source_unverified = (job['source'] in {'greenhouse', 'lever'}
+                                 and posting_freshness.observation_day(job['last_seen']) is None)
+            if job['status'] == 'expired' or source_unverified or posting_freshness.risk_reasons(dict(job)):
                 parser.error('Posting deadline or freshness needs verification before creating a new package.')
             try:
                 print(package_for(con, job, cfg, args.cover_letter))
