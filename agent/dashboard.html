@@ -40,7 +40,7 @@ label{display:inline-flex;gap:6px;align-items:center}#message{min-height:1.2em;c
 'use strict';
 const byId = id => document.getElementById(id);
 const token = '__SESSION_TOKEN__';
-const views = ['All Jobs', 'Top Matches', 'Bridge Jobs', 'Selected', 'Offline Previews', 'Ready to Review', 'Needs Attention', 'Applications', 'History'];
+const views = ['All Jobs', 'Top Matches', 'Bridge Jobs', 'Selected', 'Offline Previews', 'Ready to Review', 'Needs Attention', 'Form Readiness', 'Applications', 'History'];
 let view = views[0], page = 0, jobs = [], loading = false;
 const size = 25;
 function element(tag, content, parent) {
@@ -89,7 +89,28 @@ function filtered() {
 function render() {
   const list = byId('list');
   list.replaceChildren();
-  byId('controls').hidden = byId('paging').hidden = view === 'History';
+  byId('controls').hidden = byId('paging').hidden = view === 'History' || view === 'Form Readiness';
+  if (view === 'Form Readiness') {
+    byId('count').textContent = '';
+    element('h2', 'Offline form-preparation diagnostics', list);
+    element('p', 'Counts come from the latest saved attempt for each job. These checks do not prove live form readiness or submission.', list);
+    request('/api/form-audit').then(report => {
+      if (view !== 'Form Readiness') return;
+      element('p', report.latest_jobs + ' latest job attempts · ' + report.dry_run_previews +
+        ' detached offline previews · ' + report.prepared_current_step_only +
+        ' passed the CURRENT offline step only', list);
+      element('h2', 'Required-field blockers', list);
+      const items = Object.entries(report.required_blockers)
+        .sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      if (!items.length) element('p', 'No recorded required-field blockers. This does not verify that a live form is complete.', list);
+      for (const [name,count] of items) {
+        const card = element('article', null, list);
+        element('h2', name.replaceAll('_',' '), card);
+        element('p', count + ' required fields across ' + report.jobs_affected[name] + ' job(s)', card);
+      }
+    }).catch(error => say(error.message));
+    return;
+  }
   if (view === 'History') {
     byId('count').textContent = '';
     request('/api/history').then(history => {
