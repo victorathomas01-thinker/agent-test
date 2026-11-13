@@ -14,6 +14,7 @@ from .priority import rank_job
 from .careers import discover_sites
 from .sources import smartrecruiters_jobs
 from .workday import read_workday_jobs
+from .posting_freshness import risk_reasons
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'agent.sqlite3'
@@ -389,6 +390,7 @@ def evaluate(job,cfg):
     p=cfg['preferences']; reasons=[]
     if job.get('verification') == 'unverified':
         reasons.append('Posting availability could not be verified')
+    reasons.extend(risk_reasons(job))
     if re.search(r'\bunpaid\s+(?:internship|role|position|opportunity)\b', title + ' ' + description):
         reasons.append('Unpaid opportunity')
     if p['exclude_contract'] and ((job.get('employment_type') or '').casefold() in
@@ -523,7 +525,8 @@ def refresh_eligibility(con, cfg):
     updates = []
     for job in con.execute("""SELECT j.*, COALESCE(d.workplace, '') AS workplace,
                                      COALESCE(d.employment_type, '') AS employment_type,
-                                     COALESCE(d.salary, '') AS salary, w.verification
+                                     COALESCE(d.salary, '') AS salary, w.verification,
+                                     COALESCE(w.deadline, '') AS deadline
                               FROM jobs j LEFT JOIN job_details d ON j.id=d.job_id
                               LEFT JOIN web_checks w ON j.id=w.job_id"""):
         score, eligible, reason = evaluate(dict(job), cfg)
