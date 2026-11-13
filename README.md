@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**Official one-job public recheck (review-only):** [Usage, restrictions and outcomes](docs/OFFICIAL_SINGLE_RECHECK.md). `python main.py recheck-job <saved-official-job-id>` checks one saved Greenhouse/Lever posting through its own public GET endpoint. Only an exact matching official result can refresh local metadata and eligibility. A 404, access denial, redirect or ID mismatch never marks the posting closed or modifies the saved record.
+
 **Posting deadline/source freshness (review-only):** [Stale listing and deadline safeguards](docs/POSTING_FRESHNESS.md) add `python main.py posting-audit`, stricter saved-job eligibility checks and a second attended-submission reservation guard. Old source timestamps are review warnings, not claims that a vacancy has closed.
 
 **Read-only installation check (review-only):** [Local preflight and protected SQLite snapshots](docs/LOCAL_PREFLIGHT_AND_BACKUP.md) adds `python main.py doctor` before any migration and opt-in `python main.py doctor --backup` to a gitignored private local folder. No real database has been migrated, and the backup covers SQLite only, not other profile files.
