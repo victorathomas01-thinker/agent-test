@@ -9,6 +9,7 @@ import re
 import sys
 import tempfile
 from contextlib import closing
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, build_opener
 
@@ -64,9 +65,6 @@ def check():
         return 2
     with tempfile.TemporaryDirectory(prefix="single-posting-public-smoke-") as directory:
         path = Path(directory) / "synthetic.sqlite3"
-        with closing(core.connect.__globals__['sqlite3'].connect(path)) as unused:
-            # Force creation by core.connect in an isolated path only.
-            pass
         from unittest.mock import patch
         with patch.object(core, 'DB', path):
             with closing(core.connect()) as con, con:
@@ -87,7 +85,8 @@ def check():
                 row = con.execute(
                     'SELECT last_seen, status, url FROM jobs WHERE id=?', (listing['id'],)
                 ).fetchone()
-                if not row['last_seen'].startswith('2026-11-13'):
+                observed = datetime.fromisoformat(row['last_seen'].replace('Z', '+00:00'))
+                if observed.astimezone(timezone.utc).date() != datetime.now(timezone.utc).date():
                     print("A public posting was verified but the synthetic local refresh was not observed.")
                     return 2
                 if row['status'] != 'found' or row['url'] != listing['url']:
