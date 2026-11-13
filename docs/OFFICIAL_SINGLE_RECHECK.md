@@ -46,10 +46,16 @@ The recheck is intentionally conservative. A matching public API response only p
 - Custom Greenhouse URLs are accepted only if their exact hostname is already allowlisted in local configuration and their path/posted ID match the official board response.
 - Local data is never posted to the API. The recheck itself produces sanitized result codes, not raw exception text, HTTP headers, private fields or full employer response bodies.
 
+## Bounded live-source evidence
+
+[One-time GitHub Actions source verification, November 13, 2026](https://github.com/victorathomas01-thinker/agent-test/actions/runs/43378162276) **passed**. A disposable synthetic SQLite database was initialized; the runner read a small public Greenhouse board listing for Duolingo, selected one URL whose employer posting identity passed the strict allowlist, then made exactly one **public single-job GET** to Greenhouse. The API returned the same posting ID/URL and the local synthetic record's observation timestamp refreshed. No application flow was requested, no job titles or details were logged, and no applicant profile or private data were present.
+
+The one-time workflow is explicitly path-gated to its review branch, has no schedule and does **not** run on normal pushes or pull requests. The result validates **one** real Greenhouse posting and the guarded SQLite refresh; it does not validate Lever availability or all jobs at Duolingo.
+
 ## Validation limitations
 
 All unit tests use **fictional records and injected HTTP responses** to prove that successes update only the intended local record while 404, 410, rate limits, blocked access, invalid returned URLs, mismatches, malformed data and concurrent edits do not write to the database. Windows CI also tests the full existing offline application-rehearsal suite.
 
 The original 20-posting form pilot records remain unavailable to GitHub. This recheck feature does **not** diagnose their form failures, nor does it turn the agent into a reliable unattended job-application system.
 
-A future acceptance check should run a deliberately limited public single-posting GET against one **currently accessible** employer and review whether the result actually matches the saved job identity. No live submission should occur.
+The next source acceptance should repeat a similarly bounded check against a supported Lever posting and verify actual employer-form availability separately, with user-operated final Submit only. Do not infer a general job availability percentage from a successful one-posting recheck.
