@@ -43,7 +43,7 @@ class PublicSourceProbeTests(unittest.TestCase):
             1, read=blocked_reader)
         self.assertEqual(rows[0]["status"], "blocked")
         self.assertEqual(rows[0]["verified"], 0)
-        self.assertEqual(rows[0]["reason"], "PermissionError")
+        self.assertEqual(rows[0]["reason"], "unknown:PermissionError")
 
     def test_reject_unsafe_or_excessive_probe_budgets(self):
         for argv in (["--max-sites", "50"], ["--per-site", "10"],
