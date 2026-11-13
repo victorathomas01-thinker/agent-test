@@ -1,5 +1,8 @@
 """Offline, deterministic posting-deadline and source-freshness regression tests."""
 import sqlite3
+import io
+import sys
+from contextlib import redirect_stdout
 import tempfile
 import unittest
 from contextlib import closing
@@ -7,7 +10,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from agent import core, posting_freshness
+from agent import core, posting_freshness, pilot_audit
 from agent.submission import reserve_submission
 
 BASE_DAY = date(2026, 11, 13)
@@ -169,6 +172,36 @@ class PostingFreshnessTests(unittest.TestCase):
                         "SELECT status FROM jobs WHERE id=?", (JOB_ID,)).fetchone()[0],
                         "submission_pending")
                     self.assertEqual(con.execute("SELECT COUNT(*) FROM attempts").fetchone()[0], 1)
+
+    def test_cli_posting_audit_never_initializes_database_or_loads_applicant_facts(self):
+        import main as job_main
+        with tempfile.TemporaryDirectory() as temp:
+            database = Path(temp) / "local.sqlite3"
+            with patch.object(core, "DB", database):
+                with closing(core.connect()) as con, con:
+                    con.execute(
+                        "INSERT INTO jobs(id,source,description,status,last_seen) VALUES(?,?,?,?,?)",
+                        (JOB_ID, "greenhouse", "Application deadline: October 20, 2020.",
+                         "found", core.utc_now()),
+                    )
+                    # Malformed private fact must never get loaded by an aggregate
+                    # report; no applicant-specific data are needed to count jobs.
+                    con.execute(
+                        "INSERT INTO verified_facts VALUES(?,?,?,?,?,?)",
+                        ("private", "SECRET_NON_JSON", "local", "local", "2026-10-01", 1),
+                    )
+            before = database.read_bytes()
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["main.py", "posting-audit"]), \\
+                 patch("main.pilot_audit.open_readonly",
+                       side_effect=lambda _: pilot_audit.open_readonly(database)), \
+                 patch.object(core, "connect", side_effect=AssertionError("Unexpected schema write")), \
+                 patch.object(core, "load_config", side_effect=AssertionError("Applicant data accessed")), \
+                 redirect_stdout(output):
+                job_main.main()
+            self.assertEqual(database.read_bytes(), before)
+            self.assertIn("Explicitly passed deadline, recheck required: 1", output.getvalue())
+            self.assertNotIn("SECRET_NON_JSON", output.getvalue())
 
     def test_readonly_aggregate_of_deadline_and_source_age(self):
         with tempfile.TemporaryDirectory() as temp:
