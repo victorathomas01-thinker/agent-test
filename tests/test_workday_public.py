@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from agent import core
-from agent.workday import parse_board, read_workday_jobs, safe_external_path, select_workday_sources
+from agent.workday import parse_board, read_workday_jobs, safe_external_path, select_workday_sources, _request
 
 BOARD = "https://example.wd5.myworkdayjobs.com/en-US/External"
 JOB = "/job/Charlotte-NC/IT-Support_JR100"
@@ -40,6 +40,29 @@ class WorkdayPublicAdapterTests(unittest.TestCase):
         ):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 parse_board(bad)
+
+    def test_robots_txt_uses_text_accept_but_cxs_jobs_require_json(self):
+        from unittest.mock import Mock
+        observed = []
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, amount): return b"User-agent: *\\nAllow: /"
+        def open_request(request, timeout):
+            observed.append((request.get_method(), request.get_header("Accept"),
+                             request.get_header("Content-type")))
+            return Response()
+        with patch("agent.workday.build_opener") as opener:
+            opener.return_value.open.side_effect = open_request
+            origin = "https://example.wd5.myworkdayjobs.com"
+            _request(origin + "/robots.txt", origin=origin)
+            _request(origin + "/wday/cxs/example/External/jobs", method="POST",
+                     data={"limit": 20}, origin=origin)
+        self.assertEqual(observed[0][0], "GET")
+        self.assertIn("text/plain", observed[0][1])
+        self.assertEqual(observed[1][0], "POST")
+        self.assertEqual(observed[1][1], "application/json")
+        self.assertEqual(observed[1][2], "application/json")
 
     def test_external_paths_are_same_board_only(self):
         self.assertEqual(safe_external_path(JOB), JOB)

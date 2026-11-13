@@ -130,7 +130,34 @@ def plain(s):
     s = re.sub(r'<[^>]+>', ' ', html.unescape(s or ''))
     return re.sub(r'\s+', ' ', s).strip()
 
-def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None, audit=None):
+def approved_greenhouse_hosted_url(url, posting_id, hosts):
+    """Accept company-hosted Greenhouse links only for an explicit domain.
+
+    A trusted Greenhouse board API may return links on the company's own
+    careers domain. Never extend this to a host supplied only by the posting.
+    """
+    if not isinstance(hosts, (list, tuple, set)) or not isinstance(posting_id, (int, str)):
+        return False
+    identifier = str(posting_id)
+    if not re.fullmatch(r'[0-9]{1,20}', identifier) or not valid_application_url(url):
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        approved = {host.casefold() for host in hosts if isinstance(host, str)
+                    and re.fullmatch(r'[a-zA-Z0-9.-]{1,100}', host)}
+        if (parsed.hostname or '').casefold() not in approved:
+            return False
+        if parsed.path.rstrip('/') != '/jobs/' + identifier:
+            return False
+        query = urllib.parse.parse_qs(parsed.query)
+        if 'gh_jid' in query and query['gh_jid'] != [identifier]:
+            return False
+        return True
+    except ValueError:
+        return False
+
+
+def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None, audit=None, approved_custom_hosts=None):
     if not isinstance(maximum, int) or maximum < 1:
         raise ValueError('Posting cap must be positive.')
     if provider == 'workday':
@@ -188,11 +215,18 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
             details = {'published_at': posting.get('publishedAt'), 'workplace': posting.get('workplaceType'),
                        'employment_type': posting.get('employmentType'),
                        'salary': (posting.get('compensation') or {}).get('scrapeableCompensationSalarySummary')}
-        if board_from_url(url) != (provider, slug.lower()):
-            # Never import another organization's posting or assert completeness
-            # when the source could not be verified.
+        official = board_from_url(url) == (provider, slug.lower())
+        custom_hosted = (provider == 'greenhouse'
+                         and approved_greenhouse_hosted_url(
+                             url, posting.get('id'), approved_custom_hosts))
+        if not official and not custom_hosted:
+            # Never import an unapproved destination or claim completeness.
             complete = False
             continue
+        if custom_hosted:
+            # The official board API listed it, but this custom-hosted
+            # application endpoint is NOT an approved attended submit target.
+            details['verification'] = 'api_listing'
         identifier = (urllib.parse.urlsplit(url).path.rstrip('/').removesuffix('/application').rsplit('/', 1)[-1]
                       if provider == 'ashby' else posting['id'])
         jobs.append({
@@ -273,8 +307,11 @@ def discover(cfg, coverage=None, source_checks=None):
             maximum = (min(discovery.get('max_workday_per_site', 40),
                            discovery['max_per_source'], 60)
                        if provider == 'workday' else discovery['max_per_source'])
+            custom_hosts = (discovery.get('greenhouse_custom_hosts', {}).get(slug.casefold(), [])
+                            if provider == 'greenhouse' else None)
             postings = fetch_board(provider, slug, company, maximum,
-                                   (provider, slug) in discovered, completed, audit)
+                                   (provider, slug) in discovered, completed, audit,
+                                   approved_custom_hosts=custom_hosts)
             status = ('blocked' if audit.get('blocked') else
                       ('empty' if not postings else 'complete') if audit.get('complete')
                       else 'partial')

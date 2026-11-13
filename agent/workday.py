@@ -83,7 +83,12 @@ def _request(url, method="GET", data=None, origin=None, size_limit=2_000_000):
 
     if not origin or not url.startswith(origin + "/"):
         raise ValueError("Workday request outside the configured origin.")
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    # robots.txt is plain text, not a JSON API. A JSON-only Accept header
+    # can cause HTTP 406 (Not Acceptable) before robots rules are retrieved.
+    # Never bypass a denied or unavailable robots policy.
+    robots_request = urlsplit(url).path == "/robots.txt"
+    headers = {"User-Agent": USER_AGENT,
+               "Accept": "text/plain, */*" if robots_request else "application/json"}
     payload = json.dumps(data).encode("utf-8") if data is not None else None
     if payload is not None:
         headers["Content-Type"] = "application/json"
@@ -127,6 +132,8 @@ def read_workday_jobs(board_url, company, maximum, *,
     if not isinstance(maximum, int) or not 1 <= maximum <= 60:
         raise ValueError("Workday job limit must be from 1 to 60.")
 
+    if audit is not None:
+        audit["phase"] = "robots"
     robots = RobotFileParser()
     robots.parse(fetch_robots(board).splitlines())
     list_endpoint = board.api + "/jobs"
@@ -135,6 +142,8 @@ def read_workday_jobs(board_url, company, maximum, *,
             audit.update(blocked=True, complete=False, returned=0, reason="robots_denied")
         return []
 
+    if audit is not None:
+        audit["phase"] = "listing"
     summaries, seen = [], set()
     total, complete, offset = None, True, 0
     while len(summaries) < maximum:
@@ -193,6 +202,8 @@ def read_workday_jobs(board_url, company, maximum, *,
     if total is None or offset < total or len(summaries) < min(offset, maximum):
         complete = False
 
+    if audit is not None:
+        audit["phase"] = "details"
     jobs = []
     for i, (external, entry) in enumerate(summaries):
         listing_url = f"{board.origin}/{board.locale}/{board.site}{external}"
@@ -233,7 +244,8 @@ def read_workday_jobs(board_url, company, maximum, *,
         })
 
     if audit is not None:
-        audit.update(complete=bool(complete and total is not None and offset >= total
+        audit.update(phase="finished",
+                     complete=bool(complete and total is not None and offset >= total
                                    and all(x["verification"] == "structured" for x in jobs)),
                      blocked=False, returned=len(jobs), total=total,
                      reason=("all_public_pages_and_details" if complete and total is not None

@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**Live public-source results (review-only):** [November 12 source check](docs/LIVE_SOURCE_CHECK_2026-11-12.md) covers real Workday, Lever and Greenhouse API behavior, with tightly capped public reads and no application submissions. It also explains the approved Duolingo custom careers-host rule. This is not proof that any posting remains open.
+
 **Public-posting requirement checks (review-only):** [Source-derived qualification wording regression](docs/PUBLIC_REQUIREMENT_WORDING.md) covers hard GPA, preferred graduation dates, internship-history requirements, and relative date windows. These examples are not representative employer eligibility accuracy measurements.
 
 **New optional Workday provider (review-only):** [Public Workday discovery guide](docs/WORKDAY_PUBLIC_DISCOVERY.md). A curated, opt-in Charlotte-area employer source bank can be explored with `python main.py discover-workday --max-sites 3 --per-site 15`. It does not enable live applications, change scheduled scans, or imply any posting is still open.
