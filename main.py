@@ -10,6 +10,7 @@ from agent import core
 from agent import source_health
 from agent import form_diagnostics
 from agent import pilot_audit
+from agent import local_safety
 from agent import requirement_benchmark
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
@@ -154,6 +155,10 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     init = commands.add_parser('init')
     init.add_argument('--from-mvp', type=Path, metavar='CONFIG')
+    doctor = commands.add_parser('doctor', help='Inspect local schema and config without migrating.')
+    doctor.add_argument('--database', type=Path, default=core.DB)
+    doctor.add_argument('--backup', action='store_true',
+                        help='Create a verified SQLite snapshot under gitignored private/backups.')
     for name in ('discover', 'status', 'answers'):
         commands.add_parser(name)
     facts = commands.add_parser('facts', help='Inspect or revoke verified facts.')
@@ -265,6 +270,21 @@ def main():
         except (EOFError, KeyboardInterrupt, PlaywrightError):
             parser.error('Sign-in session closed or unavailable. Close any existing profile window and try again.')
         print('Profile closed. Browser session data stays on this computer.')
+        return
+
+    if args.command == 'doctor':
+        result = local_safety.inspect(args.database)
+        saved = None
+        if args.backup:
+            if result['database'] not in ('ready', 'upgradeable'):
+                parser.error('Existing database is missing, incompatible or failed integrity checks.')
+            try:
+                saved = local_safety.backup_local(args.database)
+            except (OSError, ValueError, sqlite3.Error):
+                parser.error('Unable to create a verified private SQLite backup.')
+        local_safety.report(result, saved)
+        if result['database'] not in ('ready', 'upgradeable') or result['config'] != 'valid':
+            raise SystemExit(2)
         return
 
     if args.command == 'pilot-audit':
