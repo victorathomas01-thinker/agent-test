@@ -48,7 +48,7 @@ class SelectedPreviewFreshnessTests(unittest.TestCase):
     def test_expired_metadata_deadline_blocks_package_even_if_cached_eligible(self):
         with closing(core.connect()) as con, con:
             con.execute(
-                "INSERT INTO web_checks(job_id,deadline) VALUES(?,?)",
+                "INSERT INTO web_checks(job_id,verification,deadline) VALUES(?,'api_listing',?)",
                 (JOB_ID, "2020-01-01"),
             )
         self.assertEqual(self._run_without_browser(), (0, 0))
@@ -77,7 +77,7 @@ class SelectedPreviewFreshnessTests(unittest.TestCase):
             con.execute(
                 "UPDATE jobs SET description='Applications close December 31, 2099.'")
             con.execute(
-                "INSERT INTO web_checks(job_id,deadline) VALUES(?,?)",
+                "INSERT INTO web_checks(job_id,verification,deadline) VALUES(?,'api_listing',?)",
                 (JOB_ID, "2020-01-01"),
             )
         self.assertEqual(self._run_without_browser(), (0, 0))
