@@ -13,6 +13,7 @@ class EligibilityPrecisionTest(unittest.TestCase):
             "Minimum GPA of 3.5 is required.",
             "At least 3.5 cumulative GPA required.",
             "3.5 GPA minimum.",
+            "Requires a current 3.5 GPA or higher.",
             "GPA >= 3.5.",
             "The minimum GPA is 3.5.",
             "GPA 3.5+.",
@@ -47,6 +48,14 @@ class EligibilityPrecisionTest(unittest.TestCase):
         self.assertIn("3.5", str(qualifications(
             "Minimum GPA of 3.5.", self.PROFILE, 3.49)))
         self.assertEqual(qualifications("Minimum GPA of 3.5.", self.PROFILE, 3.5), [])
+
+    def test_graduate_only_internship_blocks_undergraduate_profile(self):
+        text = "This opportunity is for full-time students completing a Master's degree."
+        self.assertIn("Graduate degree enrollment required",
+                      qualifications(text, {"degree": "B.S. Computer Science"}, 3.5))
+        self.assertEqual(qualifications(text, {"degree": "Master's degree"}, 3.5), [])
+        self.assertEqual(qualifications(
+            "A master's degree is preferred.", {"degree": "Bachelor of Science"}, 3.5), [])
 
     def test_explicit_graduation_latest_cutoff(self):
         result = qualifications("Applicants must graduate by May 2027.", self.PROFILE, 4.0)
