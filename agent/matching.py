@@ -26,14 +26,14 @@ GRADUATE_OR_LATER = re.compile(
     rf'\bmust\s+graduat(?:e|ing)\s+(?:in|on)?\s*{MONTH_YEAR}\s+or\s+later\b'
 )
 GPA = re.compile(
-    r'\b(?:minimum|required|at least)\s+(?:overall\s+|cumulative\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)'
-    r'|\b(?:overall\s+|cumulative\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)\s*(?:minimum|required|or higher|or above)\b'
-    r'|\b(?:minimum|at least)\s+(\d(?:\.\d+)?)\s+(?:overall\s+|cumulative\s+)?gpa\b'
-    r'|\b(\d(?:\.\d+)?)\s+(?:overall\s+|cumulative\s+)?gpa\s*(?:minimum|required|and higher|or above)\b'
-    r'|\b(?:overall\s+|cumulative\s+)?gpa\s*(?:>=|≥)\s*(\d(?:\.\d+)?)'
-    r'|\b(?:overall\s+|cumulative\s+)?gpa\s+(?:of\s+)?at\s+least\s+(\d(?:\.\d+)?)'
-    r'|\b(?:minimum|required)\s+(?:overall\s+|cumulative\s+)?gpa\s+(?:is|must\s+be)\s+(\d(?:\.\d+)?)'
-    r'|\b(?:overall\s+|cumulative\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)\s*\+'
+    r'\b(?:minimum|required|at least)\s+(?:(?:current|overall|cumulative)\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)'
+    r'|\b(?:(?:current|overall|cumulative)\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)\s*(?:minimum|required|or higher|or above)\b'
+    r'|\b(?:minimum|at least)\s+(\d(?:\.\d+)?)\s+(?:(?:current|overall|cumulative)\s+)?gpa\b'
+    r'|\b(\d(?:\.\d+)?)\s+(?:(?:current|overall|cumulative)\s+)?gpa\s*(?:minimum|required|and higher|or higher|or above)\b'
+    r'|\b(?:(?:current|overall|cumulative)\s+)?gpa\s*(?:>=|≥)\s*(\d(?:\.\d+)?)'
+    r'|\b(?:(?:current|overall|cumulative)\s+)?gpa\s+(?:of\s+)?at\s+least\s+(\d(?:\.\d+)?)'
+    r'|\b(?:minimum|required)\s+(?:(?:current|overall|cumulative)\s+)?gpa\s+(?:is|must\s+be)\s+(\d(?:\.\d+)?)'
+    r'|\b(?:(?:current|overall|cumulative)\s+)?gpa(?:\s+of|:)?\s*(\d(?:\.\d+)?)\s*\+'
 )
 SCOPE_HEADING = re.compile(
     r'\b(required qualifications?|minimum qualifications?|basic(?:/required)? qualifications?|'
@@ -113,6 +113,10 @@ def qualifications(description, profile, gpa):
             if re.search(r'\b(?:this\s+requisition\s+is\s+)?open\s+to\s+\d{4}\s+'
                          r'[a-z0-9 .&-]{1,70}\s+interns?\s+only\b', sentence):
                 blockers.append('Restricted to prior company interns — verify status')
+
+            if str(profile.get('degree', '')).casefold().startswith(('b.s.', 'bachelor')):
+                if re.search(r"\b(?:opportunity|internship|role|position) is for\b[^.;]*\b(?:completing|pursuing|enrolled in)\s+(?:a\s+)?(?:master.?s|doctoral|ph\.?d\.?)\s+(?:degree|program)\b", sentence):
+                    blockers.append('Graduate degree enrollment required')
 
             matches = list(GPA.finditer(sentence))
             for match in matches:
