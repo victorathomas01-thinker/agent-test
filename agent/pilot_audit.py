@@ -169,11 +169,12 @@ def summarize(rows, expected=20):
     }
 
 
-def render(report, start=None, through=None):
+def render(report, start=None, through=None, offline_only=False):
     title = "LOCAL HISTORICAL OFFLINE FORM AUDIT — no application data exported"
     print(title)
-    print(f"Window: {start or '(unbounded)'} through {through or '(unbounded)'}; "
-          "latest eligible offline attempt per job within window.")
+    mode = ("latest detached offline preview per job" if offline_only
+            else "latest recorded attempt per job, including later non-preview failures")
+    print(f"Window: {start or '(unbounded)'} through {through or '(unbounded)'}; " + mode + ".")
     print(f"Examined {report['sampled_unique_jobs']} unique jobs. "
           f"Expected pilot count: {report['expected_pilot_jobs']}.")
     if not report["matches_expected_count_only"]:
@@ -210,7 +211,8 @@ def main(argv=None):
             rows = selected_attempts(con, args.since, args.through,
                                      args.limit, offline_only=args.offline_only)
             report = summarize(rows, args.expected)
-        render(report, args.since, args.through)
+        render(report, args.since, args.through,
+               offline_only=args.offline_only)
         return 0
     except (OSError, sqlite3.Error, ValueError) as error:
         parser.exit(2, "Pilot audit failed safely (" + type(error).__name__ +
