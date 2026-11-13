@@ -5,7 +5,7 @@ import sys
 from contextlib import redirect_stdout
 import tempfile
 import unittest
-from contextlib import closing
+from contextlib import closing, ExitStack
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -192,12 +192,16 @@ class PostingFreshnessTests(unittest.TestCase):
                     )
             before = database.read_bytes()
             output = io.StringIO()
-            with patch.object(sys, "argv", ["main.py", "posting-audit"]), \\
-                 patch("main.pilot_audit.open_readonly",
-                       side_effect=lambda _: pilot_audit.open_readonly(database)), \
-                 patch.object(core, "connect", side_effect=AssertionError("Unexpected schema write")), \
-                 patch.object(core, "load_config", side_effect=AssertionError("Applicant data accessed")), \
-                 redirect_stdout(output):
+            with ExitStack() as stack:
+                stack.enter_context(patch.object(sys, "argv", ["main.py", "posting-audit"]))
+                stack.enter_context(patch(
+                    "main.pilot_audit.open_readonly",
+                    side_effect=lambda _: pilot_audit.open_readonly(database)))
+                stack.enter_context(patch.object(
+                    core, "connect", side_effect=AssertionError("Unexpected schema write")))
+                stack.enter_context(patch.object(
+                    core, "load_config", side_effect=AssertionError("Applicant data accessed")))
+                stack.enter_context(redirect_stdout(output))
                 job_main.main()
             self.assertEqual(database.read_bytes(), before)
             self.assertIn("Explicitly passed deadline, recheck required: 1", output.getvalue())
