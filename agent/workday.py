@@ -235,3 +235,29 @@ def read_workday_jobs(board_url, company, maximum, *,
                              and offset >= total and all(x["verification"] == "structured" for x in jobs)
                              else "bounded_or_incomplete_cxs"))
     return jobs
+
+def select_workday_sources(payload, maximum):
+    """Validate and deduplicate an explicit public employer-site source bank.
+
+    No employer URLs are guessed. This selector neither fetches nor connects
+    to any career site, and cannot change the saved agent configuration.
+    """
+    if not isinstance(maximum, int) or not 1 <= maximum <= 50:
+        raise ValueError("Select between 1 and 50 public employer boards.")
+    if not isinstance(payload, list):
+        raise ValueError("Workday sources file must be a JSON list.")
+    selected, seen = [], set()
+    for candidate in payload:
+        if not isinstance(candidate, dict):
+            raise ValueError("Each Workday source must be an object.")
+        company, url = candidate.get("company"), candidate.get("url")
+        if not isinstance(company, str) or not company.strip() or len(company.strip()) > 120:
+            raise ValueError("Workday source has an invalid employer name.")
+        board = parse_board(url)
+        if board.api in seen:
+            continue
+        selected.append({"company": company.strip(), "url": url})
+        seen.add(board.api)
+        if len(selected) >= maximum:
+            break
+    return selected
