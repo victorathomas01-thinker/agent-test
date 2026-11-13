@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from .browser import FIELDS, IDENTITY_FIELDS, field_metadata, find_form_frame, is_resume_field
 from .core import answer_for, canonical_url, normalize_question, record_attempt
-from .posting_freshness import risk_reasons
+from .posting_freshness import risk_reasons, observation_day
 from .employers import board_from_url
 from .receipts import receipt_fingerprint, record_receipt
 from .sessions import EDGE_CHANNEL, open_profile, posting_scope, requires_sign_in
@@ -70,6 +70,8 @@ def reserve_submission(con, job):
             raise ValueError('This record is closed or already tracked. Do not reopen the application.')
         if current['submitted_at'] or current['status'] in {'submitted', 'submission_pending'}:
             raise ValueError('This job was submitted or has an unresolved submission. Check the employer first.')
+        if current['source'] in {'greenhouse', 'lever'} and observation_day(current['last_seen']) is None:
+            raise ValueError('Listing has no dated public-source observation. Rediscover it first.')
         if risk_reasons(dict(current)):
             raise ValueError('Application deadline or listing freshness needs employer re-verification.')
         identity = canonical_url(job['url'])
