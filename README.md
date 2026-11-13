@@ -2,6 +2,12 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+## Beta candidate — safe Windows first run
+
+**Development candidate only; not merged into `main` or installed on your computer.** See [Windows beta first run and acceptance gates](docs/BETA_FIRST_RUN_ACCEPTANCE.md). Before any setup, run `pwsh -File .\setup.ps1 -PreflightOnly`. For an entirely new install, use `pwsh -File .\setup.ps1`; for an older compatible database, the script refuses to migrate until `-AllowSchemaUpgrade` explicitly approves a verified private SQLite backup. For an existing config with no database, it refuses to create an empty history without `-InitializeMissingDatabase`. Existing legacy profiles are **never silently imported from Downloads**; an explicit `-FromMvp PATH` is allowed only for an entirely new install.
+
+After a safe install, run `pwsh -File .\start-beta.ps1` to open the local dashboard without scheduling discovery or contacting employers. `python -m scripts.beta_status` prints a private-data-free readiness overview. **Live submission remains off.** Synthetic passing tests do not establish successful real application completion.
+
 **Public application-form readiness (draft):** [Lever and Greenhouse read-only form observations](docs/PUBLIC_FORM_READINESS_2026-11-13.md) compare the anonymous types and required controls from one public form per ATS. Synthetic Chromium tests keep checkbox attestations and ARIA-only custom controls unresolved. The local Form Readiness dashboard now recommends a safe next action per blocker category; no real application data is exported or submitted.
 
 **One-click public source review (draft):** [Needs Recheck queue and live Lever evidence](docs/REVIEW_QUEUE_RECHECK.md) keeps stale previously-prepared listings visible and offers an explicit, session-token-guarded Greenhouse/Lever read-only recheck button in the local dashboard. No employer requests occur on page load, and the source test used a disposable synthetic database only.
@@ -44,7 +50,7 @@ Discover jobs from public Greenhouse and Lever boards, filter and rank them, and
 
 ## Windows setup
 
-With Python 3.11 or later installed, run `pwsh -File setup.ps1` in the repository folder. This installs Playwright and Chromium, creates the local profile and database, and runs the tests. Setup imports the existing MVP configuration from Downloads when present. For an MVP installed elsewhere, run `python main.py init --from-mvp PATH_TO_CONFIG` before setup.
+With Python 3.11 or later installed, **first** run `pwsh -File setup.ps1 -PreflightOnly` in the reviewed beta branch. For a genuinely new local installation, `pwsh -File setup.ps1` installs dependencies and Chromium, initializes a blank local profile and database, and runs the tests. Setup never imports a configuration from Downloads automatically. Use `-FromMvp PATH_TO_CONFIG` only if you consciously want to import that configuration into a **new** empty installation. Existing databases need a safe preflight and explicit backup approval before any additive upgrade. See the [beta acceptance guide](docs/BETA_FIRST_RUN_ACCEPTANCE.md).
 
 On other platforms, run `python -m pip install -r requirements.txt`, `python -m playwright install chromium`, and `python main.py init`. Run `python -m unittest discover -s tests -v` to verify the install.
 
