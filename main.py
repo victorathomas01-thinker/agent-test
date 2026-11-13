@@ -116,18 +116,34 @@ def scan_local_receipts(con):
     print('Receipt scan | ' + ' | '.join(f'{status}: {count}' for status, count in summary.items()))
 
 
-def print_review_queue(con, limit):
-    jobs = con.execute("""SELECT * FROM jobs
-        WHERE status='submission_pending'
-           OR (eligible=1 AND status IN ('needs_review', 'prepared', 'failed'))
-        ORDER BY CASE status WHEN 'submission_pending' THEN 0 WHEN 'prepared' THEN 1
-                             WHEN 'needs_review' THEN 2 ELSE 3 END, score DESC, id LIMIT ?""",
+def print_review_queue(con, limit, cfg=None):
+    """Show saved review work even if a newly detected stale listing lost eligibility."""
+    cfg = cfg if cfg is not None else core.with_defaults({})
+    jobs = con.execute("""SELECT j.*, COALESCE(w.deadline,'') AS deadline
+        FROM jobs j LEFT JOIN web_checks w ON j.id=w.job_id
+        LEFT JOIN selections s ON j.id=s.job_id
+        WHERE j.status='submission_pending'
+           OR j.status IN ('needs_review', 'prepared', 'failed')
+           OR (j.status='found' AND s.job_id IS NOT NULL)
+        ORDER BY CASE j.status WHEN 'submission_pending' THEN 0 WHEN 'prepared' THEN 1
+                               WHEN 'needs_review' THEN 2 ELSE 3 END, j.score DESC, j.id LIMIT ?""",
                        (limit,)).fetchall()
     if not jobs:
         print('No applications are waiting for review.')
     for job in jobs:
         print(f'{job["id"]} | {job["status"]} | {job["title"]} | {job["company"]}')
         print(f'  {job["url"]}')
+        if job['status'] != 'submission_pending':
+            checks = posting_freshness.risk_reasons(dict(job))
+            if (job['source'] in {'greenhouse', 'lever'}
+                    and posting_freshness.observation_day(job['last_seen']) is None):
+                checks.append('Missing dated ATS source observation')
+            if checks:
+                print('  Source recheck needed: ' + '; '.join(checks))
+                if official_recheck.target_for(dict(job), cfg):
+                    print(f'  Manually run: python main.py recheck-job {job["id"]}')
+                else:
+                    print('  Verify the posting directly on its official employer website.')
         if job['status'] == 'submission_pending':
             print('  Verify the employer receipt before trying this application again.')
         elif job['status'] == 'needs_review':
@@ -572,7 +588,7 @@ def main():
             return
         if args.command == 'queue':
             core.refresh_eligibility(con, cfg)
-            print_review_queue(con, args.limit)
+            print_review_queue(con, args.limit, cfg)
             return
         if args.command in {'review-submit', 'release-submit'}:
             if args.command == 'review-submit' and cfg['automation'].get('allow_live_submit') is not True:
