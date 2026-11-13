@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Lock, Thread
 from urllib.parse import parse_qs, urlsplit
 
-from . import core, workbench, form_diagnostics
+from . import core, workbench, form_diagnostics, official_recheck, local_safety
 
 
 def server_for(cfg, port):
@@ -52,7 +52,7 @@ def server_for(cfg, port):
                 return self.send(200, template.replace('__SESSION_TOKEN__', token), 'text/html')
             with closing(core.connect()) as con:
                 if address.path == '/api/jobs':
-                    return self.send(200, workbench.all_jobs(con))
+                    return self.send(200, workbench.all_jobs(con, cfg))
                 if address.path == '/api/detail':
                     job = parse_qs(address.query).get('id', [''])[0]
                     result = workbench.explain_job(con, job, cfg)
@@ -90,10 +90,25 @@ def server_for(cfg, port):
                 elif self.path == '/api/prepare':
                     workbench.queue_selected()
                     start_worker()
+                elif self.path == '/api/recheck':
+                    job_id = data.get('id')
+                    if not isinstance(job_id, str) or not 1 <= len(job_id) <= 200:
+                        raise ValueError('Invalid job ID.')
+                    # This POST is an explicit, token-authenticated user click.
+                    # It performs one public employer GET, NEVER a submission.
+                    safe = local_safety.inspect(core.DB)
+                    if safe['database'] != 'ready' or safe['config'] != 'valid':
+                        return self.send(409, {
+                            'error': 'Local preflight failed. Check database and settings before rechecking.'
+                        })
+                    result = official_recheck.recheck_saved(job_id, cfg)
+                    return self.send(200, result)
                 else:
                     return self.send(404, {'error': 'Unknown action.'})
             except (ValueError, TypeError, AttributeError):
                 return self.send(400, {'error': 'Invalid request.'})
+            except (OSError, RuntimeError):
+                return self.send(503, {'error': 'Local recheck unavailable; saved job not intentionally modified.'})
             self.send(200, {'ok': True})
 
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
