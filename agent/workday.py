@@ -66,6 +66,7 @@ def safe_external_path(value):
         return None
     path = unquote(value)
     if ("//" in path or "\\" in path or "?" in path or "#" in path
+            or any(ord(character) < 32 or ord(character) == 127 for character in path)
             or any(part in ("", ".", "..") for part in path.split("/")[1:])):
         return None
     return value
