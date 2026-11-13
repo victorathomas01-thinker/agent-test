@@ -19,7 +19,10 @@ def probe(fetch=core.fetch_board):
     for provider, slug in SOURCES:
         audit = {}
         try:
-            jobs = fetch(provider, slug, slug, 4, audit=audit)
+            custom_hosts = (core.with_defaults({})["discovery"]["greenhouse_custom_hosts"].get(slug, [])
+                            if provider == "greenhouse" else None)
+            jobs = fetch(provider, slug, slug, 4, audit=audit,
+                         approved_custom_hosts=custom_hosts)
             results.append({
                 "source": provider + ":" + slug,
                 "status": "complete" if audit.get("complete")
