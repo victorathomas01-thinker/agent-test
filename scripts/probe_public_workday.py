@@ -31,10 +31,16 @@ def probe(sites, per_site, read=read_workday_jobs):
             checks.append(dict(company=company, status=status, records=len(rows),
                                verified=verified, reason=audit.get("reason", "unknown")))
         except (OSError, ValueError, KeyError, TypeError, HTTPError, URLError) as error:
+            code = getattr(error, "code", None)
+            phase = str(audit.get("phase") or "unknown")
+            # HTTP response code and phase are sufficient to diagnose a source.
+            # Never log exception strings, which may contain full URLs or headers.
+            label = (f"HTTP_{code}" if isinstance(code, int)
+                     else type(error).__name__)
             checks.append(dict(company=company,
-                               status=("blocked" if getattr(error, "code", None) in (401, 403)
+                               status=("blocked" if code in (401, 403)
                                        or isinstance(error, PermissionError) else "error"),
-                               records=0, verified=0, reason=type(error).__name__))
+                               records=0, verified=0, reason=f"{phase}:{label}"))
     return checks
 
 
