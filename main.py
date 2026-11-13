@@ -9,6 +9,8 @@ import sys
 from agent import core
 from agent import source_health
 from agent import form_diagnostics
+from agent import pilot_audit
+from agent import requirement_benchmark
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
@@ -168,6 +170,15 @@ def main():
     coverage_cmd.add_argument('--limit', type=positive_integer, default=50)
     form_audit = commands.add_parser('form-audit', help='Summarize unresolved offline form blockers.')
     form_audit.add_argument('--limit', type=positive_integer, default=500)
+    historical = commands.add_parser('pilot-audit',
+        help='Analyze historical offline attempts from an existing local database, read-only.')
+    historical.add_argument('--database', type=Path, default=core.DB)
+    historical.add_argument('--since', metavar='YYYY-MM-DD')
+    historical.add_argument('--through', metavar='YYYY-MM-DD')
+    historical.add_argument('--limit', type=positive_integer, default=20)
+    historical.add_argument('--expected', type=positive_integer, default=20)
+    commands.add_parser('benchmark-requirements',
+        help='Run source-linked fictional-profile eligibility regression checks.')
     commands.add_parser('rehearse-submit', help='Test submission against an isolated mock employer.')
     login = commands.add_parser('sign-in', help='Open a dedicated Indeed browser profile for manual sign-in.')
     login.add_argument('portal', choices=['indeed'])
@@ -254,6 +265,18 @@ def main():
         print('Profile closed. Browser session data stays on this computer.')
         return
 
+    if args.command == 'pilot-audit':
+        try:
+            with closing(pilot_audit.open_readonly(args.database)) as con:
+                rows = pilot_audit.selected_attempts(con, args.since, args.through, args.limit)
+                report = pilot_audit.summarize(rows, args.expected)
+            pilot_audit.render(report, args.since, args.through)
+        except (OSError, ValueError) as error:
+            parser.error('Pilot audit unavailable (' + type(error).__name__ +
+                         '). Check database path and date range.')
+        return
+    if args.command == 'benchmark-requirements':
+        raise SystemExit(requirement_benchmark.main())
     if args.command == 'rehearse-submit':
         status, detail = run_rehearsal()
         print(f'{status} | {detail}')

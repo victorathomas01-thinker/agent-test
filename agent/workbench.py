@@ -14,6 +14,10 @@ UNCERTAIN = {
     'May require completed degree — manually review', 'Below match threshold',
     'Prior internship experience required — confirm verified evidence',
     'Graduation relative to internship end — confirm dates',
+    'Continued enrollment after internship — verify dates',
+    'Restricted to prior company interns — verify status',
+    'Mixed required/preferred GPA language — manually review',
+    'Mixed required/preferred graduation language — manually review',
 }
 
 

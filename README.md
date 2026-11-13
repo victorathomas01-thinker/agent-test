@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**Historical pilot and public requirement evaluation (review-only):** [Method and source links](docs/PILOT_AND_REQUIREMENT_EVALUATION.md). `python main.py pilot-audit --limit 20` analyzes historical offline attempts from the existing **local read-only** database without printing private field labels, employer names or applicant facts. `python main.py benchmark-requirements` checks 28 manually annotated cases derived from nine public postings against fictional applicants; this is not an independent eligibility accuracy estimate.
+
 **One real form, read-only (review-only):** [Lever/Zoox form structure observation](docs/LIVE_FORM_STRUCTURE_2026-11-12.md) measured 34 visible and 13 required controls, including 8 required checkboxes. The run entered no answers and submitted nothing; new checkbox diagnostics keep those choices for explicit review.
 
 **Live public-source results (review-only):** [November 12 source check](docs/LIVE_SOURCE_CHECK_2026-11-12.md) covers real Workday, Lever and Greenhouse API behavior, with tightly capped public reads and no application submissions. It also explains the approved Duolingo custom careers-host rule. This is not proof that any posting remains open.
