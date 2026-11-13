@@ -10,6 +10,7 @@ from .packages import prepare_package
 from .priority import classify, rank_job
 from .posting_freshness import risk_reasons, observation_day
 from .official_recheck import target_for
+from .form_diagnostics import readiness_for_attempt
 
 UNCERTAIN = {
     'Location missing — review', 'Location outside preferred area — review',
@@ -135,9 +136,23 @@ def all_jobs(con, cfg=None):
                         LEFT JOIN selections s ON s.job_id=j.id
                         LEFT JOIN eligibility_overrides o ON o.job_id=j.id
                         ORDER BY j.score DESC,j.id""")
+    # One latest historical attempt per job. Read-only, no applicant data or
+    # employer requests; score only the detached preview's current step.
+    attempts = {
+        row['job_id']: readiness_for_attempt(row['outcome'], row['details'])
+        for row in con.execute("""SELECT a.job_id, a.outcome, a.details
+            FROM attempts a JOIN (
+                SELECT job_id, MAX(id) AS latest_id FROM attempts GROUP BY job_id
+            ) recent ON a.id=recent.latest_id
+            WHERE a.outcome IN ('prepared','needs_review','failed','expired')""")
+    }
     jobs = []
     for row in rows:
         job = dict(row)
+        job['offline_readiness'] = attempts.get(job['id'], {
+            'score': None, 'tier': 'not_assessed',
+            'manual_fields': None, 'high_effort_fields': None,
+        })
         job['category'], job['category_priority'] = classify(job['title'])
         job['can_override'] = can_override(job)
         job['override'] = bool(job.pop('override_id')) and job['can_override']

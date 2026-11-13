@@ -100,6 +100,18 @@ function render() {
       element('p', report.latest_jobs + ' latest job attempts · ' + report.dry_run_previews +
         ' detached offline previews · ' + report.prepared_current_step_only +
         ' passed the CURRENT offline step only', list);
+      element('h2', 'Offline preparation effort (current step only)', list);
+      const names = {
+        current_step_clear: 'Current step clear',
+        light_manual_review: 'Light manual review',
+        substantial_manual_review: 'Substantial manual review',
+        major_blockers: 'Major blockers',
+        not_assessed: 'Not assessed'
+      };
+      for (const [name, count] of Object.entries(report.offline_readiness_tiers || {})) {
+        element('p', (names[name] || name) + ': ' + count + ' job(s)', list);
+      }
+      element('p', 'Scores estimate offline preparation effort, not the chance of completing or receiving a job offer.', list);
       element('h2', 'Required-field blockers', list);
       const items = Object.entries(report.required_blockers)
         .sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -133,6 +145,14 @@ function render() {
     element('h2', job.title || 'Untitled posting', card);
     element('p', [job.company,job.location,job.category,'Score ' + job.score,job.salary,job.employment_type].filter(Boolean).join(' · '), card);
     element('p', [job.status,job.preparation,job.verification,job.source,job.last_seen,job.published_at,job.deadline].filter(Boolean).join(' · '), card);
+    const readiness = job.offline_readiness || {};
+    if (readiness.score !== null && readiness.score !== undefined) {
+      element('p', 'Offline preparation: ' + readiness.score + '/100 · ' +
+        String(readiness.tier || '').replaceAll('_',' ') + ' · ' +
+        readiness.manual_fields + ' required manual field(s). Current step only.', card);
+    } else {
+      element('p', 'Offline preparation: not assessed', card);
+    }
     if (job.blocker || job.reason) element('p', job.blocker || job.reason, card);
     if (job.recheck_status === 'needs_recheck') {
       element('p', 'Source verification needed: ' + job.recheck_reasons.join('; '), card);
