@@ -110,14 +110,30 @@ def grouped_choices(page, groups, cfg, filled, unresolved):
 
 
 def has_later_step(page):
-    controls = page.get_by_role(
-        'button', name=re.compile(
-            r'^(?:next(?: step| page)?|(?:save and )?continue(?: to .+)?)\s*[›→]?$', re.I
-        )
-    )
-    return any(button.is_visible() and button.evaluate(
-        "element => !!element.closest('form, [role=form]')"
-    ) for button in controls.all())
+    """Conservatively detect progress controls without clicking the employer form.
+
+    Native submit inputs, associated out-of-form buttons, accessible custom
+    buttons and in-form links may advance a wizard. Ordinary final-submit
+    controls and third-party sign-in buttons must not be counted as steps.
+    """
+    return page.locator(
+        'button, input[type="submit"], input[type="button"], '
+        '[role="button"], a[href], [role="link"]'
+    ).evaluate_all("""elements => elements.some(e => {
+      const label = (e.getAttribute('aria-label') || e.value ||
+        e.textContent || '').replace(/\\s+/g, ' ').trim();
+      const progress = new RegExp(
+        '^(?:next(?:\\\\s+(?:step|page|section))?' +
+        '|(?:save\\\\s+and\\\\s+)?continue(?:\\\\s+(?:to|application|next\\\\s+step)\\\\b.*)?' +
+        '|review(?:\\\\s+(?:application|answers|and\\\\s+submit))?)\\\\s*[›→»]?$', 'i');
+      if (!progress.test(label)) return false;
+      const style = getComputedStyle(e);
+      if (!e.getClientRects().length || style.visibility !== 'visible' ||
+          e.closest('[aria-hidden="true"]') || e.disabled ||
+          e.getAttribute('aria-disabled') === 'true') return false;
+      return !!(e.closest('form, [role="form"]') ||
+        (e.form && e.form.tagName === 'FORM'));
+    })""")
 
 
 def apply_to_page(page, cfg, live=False):
