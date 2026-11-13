@@ -8,6 +8,8 @@ from . import core
 from .browser import resume_file, run_browser
 from .packages import prepare_package
 from .priority import classify, rank_job
+from .posting_freshness import risk_reasons, observation_day
+from .official_recheck import target_for
 
 UNCERTAIN = {
     'Location missing — review', 'Location outside preferred area — review',
@@ -100,7 +102,9 @@ def prepare_selected(cfg):
                                WHERE job_id=?""", (status, blocker, version, core.utc_now(), job['id']))
 
 
-def all_jobs(con):
+def all_jobs(con, cfg=None):
+    """Build the local dashboard model without making any employer requests."""
+    cfg = cfg if cfg is not None else core.with_defaults({})
     rows = con.execute("""SELECT j.id,j.title,j.company,j.location,j.url,j.score,j.eligible,j.reason,
                                j.status,j.source,j.last_seen,j.submitted_at,j.description,
                                d.salary,d.published_at,d.workplace,d.employment_type,
@@ -118,6 +122,18 @@ def all_jobs(con):
         job['can_override'] = can_override(job)
         job['override'] = bool(job.pop('override_id')) and job['can_override']
         job['bridge_score'] = rank_job(job)['bridge_score'] if job['category'] == 'Bridge employment' else None
+        closed = job['status'] in {
+            'expired', 'submitted', 'submission_pending', 'assessment', 'interview',
+            'offer', 'rejected', 'withdrawn'
+        } or bool(job['submitted_at'])
+        reasons = risk_reasons(job) if not closed else []
+        if (not closed and job['source'] in {'greenhouse', 'lever'}
+                and observation_day(job['last_seen']) is None):
+            reasons.append('Missing dated ATS observation — recheck source')
+        job['recheck_reasons'] = reasons
+        job['recheck_status'] = ('not_applicable' if closed else
+                                 'needs_recheck' if reasons else 'recent_observation')
+        job['can_recheck'] = bool(not closed and target_for(job, cfg))
         job.pop('description')
         job['url'] = job['url'] if core.valid_application_url(job['url'] or '') else ''
         jobs.append(job)

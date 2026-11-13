@@ -2,6 +2,8 @@
 
 The [Product Bible](JOB_AGENT_BIBLE.md) defines the project. The [implementation ledger](PROGRESS.md) tracks current coverage, test evidence, and open acceptance work.
 
+**One-click public source review (draft):** [Needs Recheck queue and live Lever evidence](docs/REVIEW_QUEUE_RECHECK.md) keeps stale previously-prepared listings visible and offers an explicit, session-token-guarded Greenhouse/Lever read-only recheck button in the local dashboard. No employer requests occur on page load, and the source test used a disposable synthetic database only.
+
 **Official one-job public recheck (review-only):** [Usage, restrictions and outcomes](docs/OFFICIAL_SINGLE_RECHECK.md). `python main.py recheck-job <saved-official-job-id>` checks one saved Greenhouse/Lever posting through its own public GET endpoint. Only an exact matching official result can refresh local metadata and eligibility. A 404, access denial, redirect or ID mismatch never marks the posting closed or modifies the saved record.
 
 **Posting deadline/source freshness (review-only):** [Stale listing and deadline safeguards](docs/POSTING_FRESHNESS.md) add `python main.py posting-audit`, stricter saved-job eligibility checks and a second attended-submission reservation guard. Old source timestamps are review warnings, not claims that a vacancy has closed.
