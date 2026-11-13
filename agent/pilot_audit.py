@@ -61,7 +61,12 @@ def open_readonly(path):
     return con
 
 
-def selected_attempts(con, since=None, through=None, limit=20):
+def selected_attempts(con, since=None, through=None, limit=20, offline_only=False):
+    """Select latest history per job, optionally excluding later non-preview events.
+
+    For historical offline-only reconstruction, parse the local JSON in memory;
+    never rely on SQLite JSON1 availability or expose raw details to stdout.
+    """
     if not isinstance(limit, int) or not 1 <= limit <= 1000:
         raise ValueError("Pilot audit supports between 1 and 1000 unique jobs.")
     first, last = parse_day(since), parse_day(through)
@@ -69,7 +74,31 @@ def selected_attempts(con, since=None, through=None, limit=20):
         raise ValueError("The first audit date must not follow the last.")
     left = first.isoformat() if first else None
     right = (last + timedelta(days=1)).isoformat() if last else None
-    return con.execute(QUERY, (left, left, right, right, limit)).fetchall()
+    if not offline_only:
+        return con.execute(QUERY, (left, left, right, right, limit)).fetchall()
+    query = """
+        SELECT a.id, a.job_id, a.at, a.outcome, a.details, j.source
+        FROM attempts a LEFT JOIN jobs j ON j.id=a.job_id
+        WHERE a.outcome IN ('prepared','needs_review','failed','expired')
+          AND (? IS NULL OR a.at >= ?)
+          AND (? IS NULL OR a.at < ?)
+        ORDER BY a.id DESC
+    """
+    chosen, already_seen = [], set()
+    for row in con.execute(query, (left, left, right, right)):
+        if row["job_id"] in already_seen:
+            continue
+        try:
+            details = json.loads(row["details"]) if row["details"] else None
+        except (ValueError, TypeError):
+            details = None
+        if not isinstance(details, dict) or details.get("mode") != "dry-run":
+            continue
+        chosen.append(row)
+        already_seen.add(row["job_id"])
+        if len(chosen) >= limit:
+            break
+    return chosen
 
 
 def summarize(rows, expected=20):
@@ -173,10 +202,13 @@ def main(argv=None):
     parser.add_argument("--through", metavar="YYYY-MM-DD")
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--expected", type=int, default=20)
+    parser.add_argument("--offline-only", action="store_true",
+                        help="Select the most recent detached preview per job, ignoring later non-preview attempts.")
     args = parser.parse_args(argv)
     try:
         with closing(open_readonly(args.database)) as con:
-            rows = selected_attempts(con, args.since, args.through, args.limit)
+            rows = selected_attempts(con, args.since, args.through,
+                                     args.limit, offline_only=args.offline_only)
             report = summarize(rows, args.expected)
         render(report, args.since, args.through)
         return 0
