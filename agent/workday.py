@@ -83,7 +83,12 @@ def _request(url, method="GET", data=None, origin=None, size_limit=2_000_000):
 
     if not origin or not url.startswith(origin + "/"):
         raise ValueError("Workday request outside the configured origin.")
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    # robots.txt is plain text, not a JSON API. A JSON-only Accept header
+    # can cause HTTP 406 (Not Acceptable) before robots rules are retrieved.
+    # Never bypass a denied or unavailable robots policy.
+    robots_request = urlsplit(url).path == "/robots.txt"
+    headers = {"User-Agent": USER_AGENT,
+               "Accept": "text/plain, */*" if robots_request else "application/json"}
     payload = json.dumps(data).encode("utf-8") if data is not None else None
     if payload is not None:
         headers["Content-Type"] = "application/json"
