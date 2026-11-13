@@ -1,0 +1,31 @@
+name: One-time read-only public form structure observation
+
+# One-time, path-gated and branch-scoped. No schedule or normal push trigger.
+on:
+  push:
+    branches:
+      - feature/read-only-form-structure-2026-11-12
+    paths:
+      - .github/workflows/one-time-public-form-observation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-one-public-form:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact browser library and Chromium
+        run: |
+          python -m pip install playwright==1.64.1
+          python -m playwright install --with-deps chromium
+      - name: Observe one official public Lever form structure without entering anything
+        run: python -m scripts.probe_public_form
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          PYTHONUNBUFFERED: '1'

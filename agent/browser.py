@@ -80,7 +80,10 @@ def grouped_choices(page, groups, cfg, filled, unresolved):
         first = fields[0]
         question = first['question'].strip().rstrip('*').strip()
         required = any(field['required'] for field in fields)
-        reason = 'requires manual input'
+        # Checkboxes may be attestations, EEO answers, or multi-select
+        # questions; never infer a legal acknowledgment from the form.
+        reason = ('checkbox group requires explicit applicant review'
+                  if first['type'] == 'checkbox' else 'requires manual input')
         if first['type'] == 'radio' and question:
             answer, key = answer_for(question, cfg)
             matches = [field for field in fields if answer is not None and
@@ -129,7 +132,8 @@ def apply_to_page(page, cfg, live=False):
             groups.setdefault(group_key, []).append(field)
             continue
         node = page.locator(FIELDS).nth(field['index'])
-        reason = 'requires manual input'
+        reason = ('checkbox requires explicit applicant review'
+                  if kind == 'checkbox' else 'requires manual input')
         try:
             if is_resume:
                 resume = resume_file(cfg)

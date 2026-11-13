@@ -264,6 +264,38 @@ class BrowserTest(unittest.TestCase):
         self.assertIn('later application steps', review)
         self.assertNotIn('willing_to_relocate', json.loads(details)['filled'])
 
+    def test_required_checkboxes_remain_unchecked_and_diagnosed_separately(self):
+        from agent.form_diagnostics import classify
+
+        page = self.browser.new_page(java_script_enabled=False)
+        try:
+            page.set_content("""
+              <form>
+                <label>First Name<input name="first_name" required></label>
+                <label>Email<input type="email" name="email" required></label>
+                <label><input type="checkbox" id="attest" required>
+                       I certify the information is accurate</label>
+                <fieldset>
+                  <legend>Select applicable acknowledgments *</legend>
+                  <label><input type="checkbox" id="a" required> Option A</label>
+                  <label><input type="checkbox" id="b"> Option B</label>
+                </fieldset>
+              </form>
+            """)
+            outcome, details = apply_to_page(page, CFG)
+            self.assertEqual(outcome, "needs_review")
+            self.assertFalse(page.locator("#attest").is_checked())
+            self.assertFalse(page.locator("#a").is_checked())
+            self.assertFalse(page.locator("#b").is_checked())
+            unresolved = json.loads(details)["unresolved"]
+            categories = {classify(item["reason"]) for item in unresolved}
+            self.assertIn("checkbox_attestation_or_choice", categories)
+            self.assertIn("checkbox_group_manual_review", categories)
+            self.assertTrue(all(item["required"] for item in unresolved
+                                if "checkbox" in item["reason"]))
+        finally:
+            page.close()
+
     def test_embedded_form_can_be_copied_and_filled_offline(self):
         page = self.browser.new_page()
         try:
