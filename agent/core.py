@@ -13,6 +13,7 @@ from .matching import ADJACENT_ROLES, fit_signals, qualifications
 from .priority import rank_job
 from .careers import discover_sites
 from .sources import smartrecruiters_jobs
+from .workday import read_workday_jobs
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / 'agent.sqlite3'
@@ -132,6 +133,14 @@ def plain(s):
 def fetch_board(provider, slug, company, maximum, discovered=False, coverage=None, audit=None):
     if not isinstance(maximum, int) or maximum < 1:
         raise ValueError('Posting cap must be positive.')
+    if provider == 'workday':
+        # Workday CXS reads only explicitly configured public boards. Never
+        # expire jobs based on this unofficial API even after full page reads.
+        jobs = read_workday_jobs(slug, company, min(maximum, 60), audit=audit)
+        for job in jobs:
+            # Store readable text rather than untrusted Workday HTML.
+            job['description'] = plain(job.get('description', ''))
+        return jobs
     if provider == 'smartrecruiters':
         jobs = smartrecruiters_jobs(slug, company, maximum, http_json, plain, audit)
         if coverage is not None and audit is not None and audit.get('complete'):
@@ -232,6 +241,13 @@ def discover(cfg, coverage=None, source_checks=None):
     ] + [
         ('smartrecruiters', slug, slug) for slug in discovery.get('smartrecruiters_companies', [])
     ]
+    workday_sites = discovery.get('workday_sites', [])
+    if not isinstance(workday_sites, list):
+        raise ValueError('Workday sites must be a list of official company career URLs.')
+    for entry in workday_sites:
+        if not isinstance(entry, dict) or not isinstance(entry.get('url'), str) or not isinstance(entry.get('company'), str):
+            raise ValueError('Each Workday site needs an official URL and company name.')
+        configured.append(('workday', entry['url'], entry['company']))
     known = {(provider, slug.lower()) for provider, slug, _ in configured}
     found, errors = find_boards(
         discovery.get('employer_feeds', []),
@@ -247,18 +263,32 @@ def discover(cfg, coverage=None, source_checks=None):
     def fetch(source):
         provider, slug, company = source
         completed, audit = [], {}
-        key = f'{provider}:{slug}'
+        if provider == 'workday':
+            safe_company = re.sub(r'[^a-z0-9_-]+', '-', company.casefold()).strip('-')[:36]
+            token = hashlib.sha256(slug.encode('utf-8')).hexdigest()[:12]
+            key = f'workday:{safe_company}:{token}'
+        else:
+            key = f'{provider}:{slug}'
         try:
-            postings = fetch_board(provider, slug, company, discovery['max_per_source'],
+            maximum = (min(discovery.get('max_workday_per_site', 40),
+                           discovery['max_per_source'], 60)
+                       if provider == 'workday' else discovery['max_per_source'])
+            postings = fetch_board(provider, slug, company, maximum,
                                    (provider, slug) in discovered, completed, audit)
-            status = ('empty' if not postings else 'complete') if audit.get('complete') else 'partial'
+            status = ('blocked' if audit.get('blocked') else
+                      ('empty' if not postings else 'complete') if audit.get('complete')
+                      else 'partial')
             source_check = dict(kind='ats', key=key, status=status, records=len(postings),
                                 detail=audit.get('reason', 'coverage_unknown'))
             return postings, None, completed, source_check
         except (OSError, ValueError, KeyError, TypeError) as error:
-            source_check = dict(kind='ats', key=key, status='error', records=0,
+            denied = isinstance(error, PermissionError) or getattr(error, 'code', None) in (401, 403)
+            source_check = dict(kind='ats', key=key,
+                                status='blocked' if denied else 'error', records=0,
                                 detail=type(error).__name__)
-            return [], f'{provider} {slug}: {error}', [], source_check
+            # Do not place a configured career URL in the source error log.
+            label = key if provider == 'workday' else f'{provider} {slug}'
+            return [], f'{label}: {type(error).__name__}', [], source_check
 
     jobs = []
     with ThreadPoolExecutor(max_workers=6) as pool:
