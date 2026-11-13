@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
@@ -74,7 +75,7 @@ def inspect(root: Path):
                 forms = form_diagnostics.summarize(con, limit=500)
                 report["dry_run_previews"] = forms["dry_run_previews"]
                 report["required_blockers"] = sum(forms["required_blockers"].values())
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, sqlite3.Error):
             report["database"] = "unreadable_at_beta_status"
     return report
 
