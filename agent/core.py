@@ -136,7 +136,11 @@ def fetch_board(provider, slug, company, maximum, discovered=False, coverage=Non
     if provider == 'workday':
         # Workday CXS reads only explicitly configured public boards. Never
         # expire jobs based on this unofficial API even after full page reads.
-        return read_workday_jobs(slug, company, min(maximum, 60), audit=audit)
+        jobs = read_workday_jobs(slug, company, min(maximum, 60), audit=audit)
+        for job in jobs:
+            # Store readable text rather than untrusted Workday HTML.
+            job['description'] = plain(job.get('description', ''))
+        return jobs
     if provider == 'smartrecruiters':
         jobs = smartrecruiters_jobs(slug, company, maximum, http_json, plain, audit)
         if coverage is not None and audit is not None and audit.get('complete'):
