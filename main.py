@@ -13,6 +13,7 @@ from agent import form_diagnostics
 from agent import pilot_audit
 from agent import local_safety
 from agent import posting_freshness
+from agent import official_recheck
 from agent import requirement_benchmark
 from agent.browser import resume_file, run_browser
 from agent.receipts import read_receipt, record_receipt, scan_receipts
@@ -178,6 +179,10 @@ def main():
     form_audit = commands.add_parser('form-audit', help='Summarize unresolved offline form blockers.')
     form_audit.add_argument('--limit', type=positive_integer, default=500)
     commands.add_parser('posting-audit', help='Summarize deadlines and stale sources without applicant details.')
+    single_recheck = commands.add_parser('recheck-job',
+        help='Read one saved Greenhouse/Lever posting from its official public API; no application request.')
+    single_recheck.add_argument('job_id', help='Existing exact job ID from the local listing.')
+
     historical = commands.add_parser('pilot-audit',
         help='Analyze historical offline attempts from an existing local database, read-only.')
     historical.add_argument('--database', type=Path, default=core.DB)
@@ -287,6 +292,22 @@ def main():
                 parser.error('Unable to create a verified private SQLite backup.')
         local_safety.report(result, saved)
         if result['database'] not in ('ready', 'upgradeable') or result['config'] != 'valid':
+            raise SystemExit(2)
+        return
+
+    if args.command == 'recheck-job':
+        # Do not run effective_answers or create tables before the GET:
+        # the selected public posting ID is the only remote request input.
+        safety = local_safety.inspect(core.DB)
+        if safety['database'] != 'ready' or safety['config'] != 'valid':
+            parser.error('An existing healthy local database and disabled-submission config are required. Run doctor.')
+        try:
+            cfg = core.load_config()
+            result = official_recheck.recheck_saved(args.job_id, cfg)
+        except (OSError, RuntimeError, ValueError, sqlite3.Error):
+            parser.error('Official source recheck could not run safely. Existing records were not intentionally updated.')
+        official_recheck.print_result(result)
+        if result['status'] != 'verified_listed':
             raise SystemExit(2)
         return
 
