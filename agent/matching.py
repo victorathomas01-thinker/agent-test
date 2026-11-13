@@ -98,7 +98,7 @@ def qualifications(description, profile, gpa):
             optional = (scope == "optional" or bool(
                 re.search(r'\b(?:preferred|nice to have|desirable|desired|a plus)\b',
                           sentence)))
-            mandatory = bool(re.search(r'\b(?:must|requires?|required|minimum)\b', sentence))
+            mandatory = bool(re.search(r'\b(?:must|requires?|required)\b', sentence))
             if optional and not mandatory:
                 continue
             mixed = optional and mandatory
