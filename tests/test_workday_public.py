@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from agent import core
-from agent.workday import parse_board, read_workday_jobs, safe_external_path
+from agent.workday import parse_board, read_workday_jobs, safe_external_path, select_workday_sources
 
 BOARD = "https://example.wd5.myworkdayjobs.com/en-US/External"
 JOB = "/job/Charlotte-NC/IT-Support_JR100"
@@ -190,6 +190,31 @@ class WorkdayPublicAdapterTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertNotIn(BOARD, errors[0])
         self.assertEqual(source_checks2[0]["status"], "blocked")
+
+    def test_explicit_source_bank_validation_and_deduplication(self):
+        sources = [{"company": "Example", "url": BOARD},
+                   {"company": "Example duplicate", "url": BOARD},
+                   {"company": "Other", "url": "https://other.wd1.myworkdayjobs.com/Careers"}]
+        self.assertEqual(len(select_workday_sources(sources, 2)), 2)
+        self.assertEqual(select_workday_sources(sources, 1)[0]["company"], "Example")
+        for bad in (
+            [{"company": "Injected", "url": "https://127.0.0.1/External"}],
+            [{"company": "", "url": BOARD}],
+            [{"company": "Example", "url": "http://example.wd5.myworkdayjobs.com/External"}],
+            {"company": "not a list"},
+        ):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                select_workday_sources(bad, 3)
+        with self.assertRaises(ValueError):
+            select_workday_sources(sources, 0)
+
+    def test_opt_in_source_bank_contains_only_official_company_roots(self):
+        from pathlib import Path
+        bank = Path(__file__).resolve().parent.parent / "examples" / "charlotte_workday_sites.json"
+        selected = select_workday_sources(json.loads(bank.read_text(encoding="utf-8")), 50)
+        self.assertGreaterEqual(len(selected), 5)
+        self.assertEqual(len(selected), len({parse_board(item["url"]).api for item in selected}))
+        self.assertTrue(all(item["company"] for item in selected))
 
     def test_configured_only_not_in_default_company_scan(self):
         cfg = core.with_defaults({})
