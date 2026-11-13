@@ -1,4 +1,4 @@
-name: One-time read-only Workday source check
+name: One-time public ATS and Workday read-only verification
 
 # A deliberately one-time, path-gated probe. Normal pushes and PRs do NOT
 # trigger public network requests. Re-trigger only by explicitly editing
@@ -28,7 +28,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Probe at most 2 official public Workday sites, 2 listings each
+      - name: Retry two public boards with correct plain-text robots Accept header
         run: python -m scripts.probe_public_workday --max-sites 2 --per-site 2
         env:
           PYTHONDONTWRITEBYTECODE: '1'
