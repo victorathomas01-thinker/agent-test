@@ -80,6 +80,64 @@ def classify(reason):
     return "other_manual_review"
 
 
+
+# These weights estimate human attention on the *detached current step*.
+# They are not employer-form completion probabilities or application success.
+LOW_EFFORT = frozenset({
+    "missing_verified_answer", "radio_choice_ambiguous",
+    "dropdown_choice_ambiguous", "checkbox_attestation_or_choice",
+    "checkbox_group_manual_review", "custom_choice_unmatched",
+})
+HIGH_EFFORT = frozenset({
+    "unsupported_custom_control", "custom_options_not_in_snapshot",
+    "browser_fill_error", "validation_error", "resume_not_ready",
+    "identity_or_resume_unresolved", "later_step_unchecked",
+})
+HARD_CAPS = {
+    "later_step_unchecked": 40,
+    "identity_or_resume_unresolved": 25,
+    "custom_options_not_in_snapshot": 50,
+    "browser_fill_error": 45,
+}
+
+
+def readiness_for_attempt(outcome, details):
+    """Return an explainable offline preparation effort estimate, or unknown.
+
+    Only records generated from detached snapshots qualify. No employer
+    requests and no source answer/field labels escape into the result.
+    """
+    try:
+        payload = json.loads(details) if isinstance(details, str) else None
+    except (ValueError, TypeError):
+        payload = None
+    if not isinstance(payload, dict) or payload.get("mode") != "dry-run":
+        return {"score": None, "tier": "not_assessed",
+                "manual_fields": None, "high_effort_fields": None}
+    items = payload.get("unresolved")
+    if not isinstance(items, list) or not isinstance(payload.get("filled"), list):
+        return {"score": None, "tier": "not_assessed",
+                "manual_fields": None, "high_effort_fields": None}
+    required = [classify(item.get("reason")) for item in items
+                if isinstance(item, dict) and item.get("required") is True]
+    count_low = sum(kind in LOW_EFFORT for kind in required)
+    count_high = sum(kind in HIGH_EFFORT for kind in required)
+    unknown = len(required) - count_low - count_high
+    points = max(0, 100 - 12 * count_low - 28 * count_high - 25 * unknown)
+    for category, cap in HARD_CAPS.items():
+        if category in required:
+            points = min(points, cap)
+    if outcome != "prepared" and not required:
+        return {"score": None, "tier": "not_assessed",
+                "manual_fields": None, "high_effort_fields": None}
+    tier = ("current_step_clear" if not required and outcome == "prepared"
+            else "light_manual_review" if points >= 70
+            else "substantial_manual_review" if points >= 35
+            else "major_blockers")
+    return {"score": points, "tier": tier,
+            "manual_fields": len(required),
+            "high_effort_fields": count_high + unknown}
+
 def latest_reviews(con, limit=500):
     if not isinstance(limit, int) or not 1 <= limit <= 5000:
         raise ValueError("Invalid form audit limit.")
@@ -101,8 +159,10 @@ def summarize(con, limit=500):
     jobs_with_category = Counter()
     current_step_prepared = 0
     reviewed_jobs = 0
+    readiness_tiers = Counter()
     for row in records:
         outcome = row["outcome"]
+        readiness_tiers[readiness_for_attempt(outcome, row["details"])["tier"]] += 1
         outcomes[outcome] += 1
         detail = row["details"]
         try:
@@ -137,6 +197,7 @@ def summarize(con, limit=500):
         "latest_jobs": len(records),
         "dry_run_previews": reviewed_jobs,
         "prepared_current_step_only": current_step_prepared,
+        "offline_readiness_tiers": dict(sorted(readiness_tiers.items())),
         "outcomes": dict(sorted(outcomes.items())),
         "required_blockers": dict(sorted(required_field_categories.items())),
         "jobs_affected": dict(sorted(jobs_with_category.items())),
