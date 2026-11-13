@@ -38,7 +38,7 @@ def run(app, *arguments):
 
 def make_sandbox(app):
     app.mkdir()
-    for name in ("main.py", "config.example.json"):
+    for name in ("main.py", "config.example.json", ".gitignore"):
         shutil.copy2(ROOT / name, app / name)
     shutil.copytree(ROOT / "agent", app / "agent",
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
@@ -196,9 +196,16 @@ def legacy_upgrade(app):
     active.rename(moved)
     try:
         legacy_db.rename(active)
-        # init must be safe to rerun, but it currently returns early if
-        # config.json exists; directly request a harmless status operation,
-        # which opens and upgrades the existing SQLite schema.
+        # A read-only preflight and explicit snapshot must work before any
+        # call to core.connect() can add tables to the older database.
+        before_legacy = active.read_bytes()
+        preflight = run(app, "main.py", "doctor")
+        if "Database state: upgradeable" not in preflight:
+            raise AssertionError("Legacy schema was not identified as additive.")
+        if active.read_bytes() != before_legacy:
+            raise AssertionError("Legacy preflight mutated the source database.")
+        run(app, "main.py", "doctor", "--backup")
+        # This intentionally invokes a sandboxed migration AFTER backup.
         run(app, "main.py", "status")
         with closing(sqlite3.connect(active)) as con:
             tables = {row[0] for row in con.execute(
@@ -231,6 +238,19 @@ def main():
             raise AssertionError("New install did not create a local SQLite database.")
         seed(db)
         original_checksum = hashlib.sha256(db.read_bytes()).hexdigest()
+        doctor = run(app, "main.py", "doctor")
+        if "Database state: ready" not in doctor or "Configuration: valid" not in doctor:
+            raise AssertionError("Modern database preflight did not pass.")
+        if hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
+            raise AssertionError("Read-only doctor unexpectedly changed the original.")
+        backed_up = run(app, "main.py", "doctor", "--backup")
+        if "Verified SQLite snapshot" not in backed_up:
+            raise AssertionError("CLI did not confirm its opt-in backup.")
+        backups = list((app / "private" / "backups").glob("job-agent-db-*.sqlite3"))
+        if len(backups) != 1 or database_rows(backups[0]) != database_rows(db):
+            raise AssertionError("Private backup omitted or altered local agent records.")
+        if hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
+            raise AssertionError("Backup changed the original local database.")
         output = run(app, "main.py", "pilot-audit", "--since", DAY,
                      "--through", DAY, "--offline-only",
                      "--limit", "20", "--expected", "20")
@@ -255,6 +275,7 @@ def main():
             count = con.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]
         if count != 22:
             raise AssertionError("Historical applicant attempts changed during acceptance.")
+        print("PASS — read-only doctor, safe config gate, and private verified SQLite snapshots")
         print("PASS — isolated clean CLI init and live-submit safeguard")
         print("PASS — 20-job synthetic historical pilot audit; read-only source unchanged")
         print("PASS — 28 fictional-profile public requirement fixtures")
