@@ -117,7 +117,7 @@ def seed(db):
         con.execute(
             """INSERT INTO verified_facts(key,value,source,scope,verified_at,active)
                VALUES ('synthetic_private','' || ?, 'test', 'local', ?,1)""",
-            (SENTINEL, DAY),
+            (json.dumps(SENTINEL), DAY),
         )
 
 
@@ -252,6 +252,8 @@ def main():
         if hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
             raise AssertionError("Backup changed the original local database.")
         audit = run(app, "main.py", "posting-audit")
+        if hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
+            raise AssertionError("Read-only posting audit unexpectedly modified the source database.")
         if ("Unsubmitted job records: 20" not in audit
                 or "Explicitly passed deadline, recheck required: 1" not in audit):
             raise AssertionError("Posting readiness report did not identify the saved expired cutoff.")
