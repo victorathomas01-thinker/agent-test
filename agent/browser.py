@@ -26,8 +26,10 @@ def field_metadata(scope):
       // ARIA-only checkboxes, radio choices and switches do not carry native
       // HTML input validation. Record them as manual custom controls rather
       // than silently deciding a detached preview is ready.
-      const custom = ['combobox', 'listbox', 'textbox', 'checkbox', 'radio', 'switch']
-        .includes(role) && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.tagName);
+      const custom = (['combobox', 'listbox', 'textbox'].includes(role)
+          && e.tagName !== 'SELECT') ||
+        (['checkbox', 'radio', 'switch'].includes(role)
+          && (e.tagName !== 'INPUT' || !['checkbox', 'radio'].includes(e.type)));
       const group = ['radio', 'checkbox'].includes(e.type) &&
         e.closest('fieldset, [role="radiogroup"], [role="group"]');
       const listbox = document.getElementById(e.getAttribute('aria-controls') || '');
