@@ -137,6 +137,21 @@ class WorkdayPublicAdapterTests(unittest.TestCase):
         self.assertFalse(eligible)
         self.assertIn("could not be verified", why)
 
+    def test_inconsistent_total_does_not_look_like_complete_discovery(self):
+        def fetch(method, url, payload, board):
+            if method == "POST":
+                return {"total": 0, "jobPostings": [
+                    {"title": "Intern", "externalPath": JOB}
+                ]}
+            return detail_for(url)
+
+        audit = {}
+        rows = read_workday_jobs(BOARD, "Example", 10, fetch_json=fetch,
+                                 fetch_robots=lambda b: "User-agent: *\\nAllow: /",
+                                 pause=lambda _: None, audit=audit)
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(audit["complete"])
+
     def test_duplicate_job_paths_and_missing_total_remain_partial(self):
         def fetch(method, url, payload, board):
             if method == "POST":
