@@ -45,6 +45,9 @@ def make_sandbox(app):
     (app / "examples").mkdir()
     shutil.copy2(ROOT / "examples" / "public_requirements_benchmark.json",
                  app / "examples" / "public_requirements_benchmark.json")
+    (app / "scripts").mkdir()
+    for name in ("beta_guard.py", "beta_status.py"):
+        shutil.copy2(ROOT / "scripts" / name, app / "scripts" / name)
 
 
 def database_rows(db):
@@ -204,7 +207,19 @@ def legacy_upgrade(app):
             raise AssertionError("Legacy schema was not identified as additive.")
         if active.read_bytes() != before_legacy:
             raise AssertionError("Legacy preflight mutated the source database.")
-        run(app, "main.py", "doctor", "--backup")
+        preview = run(app, "-m", "scripts.beta_guard", "--allow-upgrade", "--dry-run")
+        if "existing_backup_then_upgrade" not in preview:
+            raise AssertionError("Beta guard did not identify the compatible legacy schema.")
+        if (app / "private" / "backups").exists():
+            before_snapshots = list((app / "private" / "backups").glob("*.sqlite3"))
+        else:
+            before_snapshots = []
+        guard = run(app, "-m", "scripts.beta_guard", "--allow-upgrade")
+        if "Verified private SQLite snapshot" not in guard:
+            raise AssertionError("Beta install did not create its approved migration snapshot.")
+        snapshots = list((app / "private" / "backups").glob("*.sqlite3"))
+        if len(snapshots) != len(before_snapshots) + 1:
+            raise AssertionError("Approved beta migration did not add exactly one private snapshot.")
         # This intentionally invokes a sandboxed migration AFTER backup.
         run(app, "main.py", "status")
         with closing(sqlite3.connect(active)) as con:
@@ -229,6 +244,9 @@ def main():
         make_sandbox(app)
         if (app / "agent.sqlite3").exists():
             raise AssertionError("Unexpected job agent database in clean sandbox.")
+        preflight = run(app, "-m", "scripts.beta_guard", "--dry-run")
+        if "fresh_new" not in preflight or (app / "agent.sqlite3").exists():
+            raise AssertionError("Fresh beta installer preflight should not create a database.")
         run(app, "main.py", "init")
         config = json.loads((app / "config.json").read_text(encoding="utf-8"))
         if config["automation"]["allow_live_submit"] is not False:
@@ -238,6 +256,11 @@ def main():
             raise AssertionError("New install did not create a local SQLite database.")
         seed(db)
         original_checksum = hashlib.sha256(db.read_bytes()).hexdigest()
+        status = run(app, "-m", "scripts.beta_status")
+        if "Database: ready" not in status or "Stored job records: 20" not in status:
+            raise AssertionError("First-run beta status did not summarize the local installation.")
+        if db.read_bytes() and hashlib.sha256(db.read_bytes()).hexdigest() != original_checksum:
+            raise AssertionError("Beta status changed applicant or job data.")
         doctor = run(app, "main.py", "doctor")
         if "Database state: ready" not in doctor or "Configuration: valid" not in doctor:
             raise AssertionError("Modern database preflight did not pass.")
@@ -281,6 +304,7 @@ def main():
             count = con.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]
         if count != 22:
             raise AssertionError("Historical applicant attempts changed during acceptance.")
+        print("PASS — beta installer preflight, explicitly approved legacy snapshot, and read-only beta status")
         print("PASS — read-only doctor, safe config gate, and private verified SQLite snapshots")
         print("PASS — persisted deadline and source-age review report; zero private data")
         print("PASS — isolated clean CLI init and live-submit safeguard")
