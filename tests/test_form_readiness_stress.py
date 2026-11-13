@@ -125,6 +125,52 @@ class FormReadinessStressTests(unittest.TestCase):
         finally:
             page.close()
 
+    def test_synthetic_greenhouse_28_control_shape_requires_manual_custom_review(self):
+        # Fictional content matching ONLY the aggregate type counts observed
+        # in one real public Greenhouse form. No actual employer questions.
+        pieces = ["<form>",
+                  '<label>First Name<input type="text" name="first_name" required></label>',
+                  '<label>Last Name<input type="text" name="last_name" required></label>',
+                  '<label>Email<input type="text" name="email" required></label>']
+        for i in range(2):
+            pieces.append(f'<label>Optional synthetic text {i}<input type="text"></label>')
+        for i in range(18):
+            required = ' aria-required="true"' if i < 10 else ''
+            pieces.append(
+                f'<label>Synthetic combobox {i}<input role="combobox" '
+                f'aria-label="Synthetic option {i}"{required}></label>')
+        pieces.extend([
+            '<label>Optional phone<input type="tel"></label>',
+            '<label>Synthetic résumé<input type="file" name="resume" required></label>',
+        ])
+        for i in range(3):
+            pieces.append(f'<label>Required synthetic paragraph {i}<textarea required></textarea></label>')
+        pieces.append("</form>")
+        page = self.browser.new_page(java_script_enabled=False)
+        try:
+            page.set_content("".join(pieces))
+            summary = classify_fields(field_metadata(page))
+            self.assertEqual(summary["visible_fields"], 28)
+            self.assertEqual(summary["required_fields"], 17)
+            self.assertEqual(summary["types"], {
+                "custom": 18, "file": 1, "tel": 1, "text": 5, "textarea": 3,
+            })
+            self.assertEqual(summary["required_types"], {
+                "custom": 10, "file": 1, "text": 3, "textarea": 3,
+            })
+            self.assertTrue(summary["requires_human_decisions_on_observed_step"])
+            self.assertEqual(summary["required_custom_or_unknown"], 10)
+            outcome, payload = apply_to_page(page, CFG)
+            self.assertEqual(outcome, "needs_review")
+            unresolved = json.loads(payload)["unresolved"]
+            self.assertEqual(sum(f["required"] and
+                                 "custom control" in f["reason"] for f in unresolved), 10)
+            self.assertEqual(sum(f["required"] and
+                                 "resume" in f["reason"] for f in unresolved), 1)
+            self.assertNotIn("sample@example.invalid", payload)
+        finally:
+            page.close()
+
     def test_optional_aria_only_controls_still_visible_but_not_required(self):
         page = self.browser.new_page(java_script_enabled=False)
         try:
