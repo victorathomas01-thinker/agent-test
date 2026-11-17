@@ -1,0 +1,115 @@
+{
+  "description": "Synthetic holdout for the early-career Charlotte or US-remote profile. Labels use grades 0–2 and separate eligibility judgments.",
+  "config": {
+    "preferences": {
+      "minimum_score": 20,
+      "keywords": [
+        "software engineer",
+        "developer",
+        "data analyst",
+        "it support",
+        "intern"
+      ],
+      "locations": [
+        "charlotte",
+        "remote"
+      ],
+      "exclude_contract": true,
+      "exclude_senior": true,
+      "exclude_hard_gpa_over": 3.2
+    },
+    "verified_answers": {}
+  },
+  "cases": [
+    {
+      "id": "analytics-coop",
+      "title": "Data Analyst Co-op",
+      "location": "Charlotte, NC",
+      "description": "Analyze support and onboarding data in SQL.",
+      "relevance": 2,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/analytics-coop"
+    },
+    {
+      "id": "remote-dev",
+      "title": "Junior Developer",
+      "location": "US Remote",
+      "description": "Entry-level developer role with mentorship.",
+      "relevance": 2,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/remote-dev"
+    },
+    {
+      "id": "qa-intern",
+      "title": "Software Engineer Intern",
+      "location": "Charlotte, NC",
+      "description": "Quality engineering and release automation.",
+      "relevance": 2,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/qa-intern"
+    },
+    {
+      "id": "support-day",
+      "title": "IT Support Technician",
+      "location": "Charlotte, NC",
+      "description": "Troubleshoot workstation and account issues.",
+      "relevance": 1,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/support-day"
+    },
+    {
+      "id": "adjacent",
+      "title": "Junior Technical Support",
+      "location": "Charlotte, NC",
+      "description": "Help internal staff and learn software troubleshooting.",
+      "relevance": 1,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/adjacent"
+    },
+    {
+      "id": "gpa-min",
+      "title": "Data Analyst Intern",
+      "location": "Charlotte, NC",
+      "description": "Minimum GPA of 3.8 is required.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/gpa-min"
+    },
+    {
+      "id": "contract-senior",
+      "title": "Senior Developer",
+      "location": "Charlotte, NC",
+      "description": "Contract role for a lead developer.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/contract-senior"
+    },
+    {
+      "id": "eu",
+      "title": "Software Engineer Intern",
+      "location": "Remote UK",
+      "description": "Candidate must be in the UK.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/eu"
+    },
+    {
+      "id": "author",
+      "title": "Developer Intern",
+      "location": "Charlotte, NC",
+      "description": "Must be authorized to work in the United States.",
+      "relevance": 1,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/author"
+    },
+    {
+      "id": "marketing",
+      "title": "Marketing Coordinator",
+      "location": "Charlotte, NC",
+      "description": "Coordinate brand campaigns and events.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/marketing"
+    }
+  ]
+}

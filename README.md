@@ -8,6 +8,30 @@ With Python 3.11 or later installed, run `pwsh -File setup.ps1` in the repositor
 
 On other platforms, run `python -m pip install -r requirements.txt`, `python -m playwright install chromium`, and `python main.py init`. Run `python -m unittest discover -s tests -v` to verify the install.
 
+GitHub Actions runs the same unittest command on Windows for pushes and pull requests. CI installs Chromium and uses a clean checkout.
+
+## Portfolio dashboard
+
+See the [two-minute walkthrough](DEMO.md) for the dashboard, an isolated employer rehearsal, and a separate synthetic ranking holdout.
+
+Run `python -m agent.dashboard` and open `private/dashboard/demo.html` for a synthetic walkthrough of scores, eligibility reasons, and the review queue. It works offline without a configured profile.
+
+Run `python -m agent.dashboard --live` to generate an offline snapshot of your initialized SQLite database in `private/dashboard/jobs.html`. Keep this file private. It contains listing and review status data. The dashboard reads SQLite in read-only mode.
+
+## Local web dashboard
+
+Start the synthetic dashboard with `python -m agent.web_dashboard` and open http://127.0.0.1:8765. Pass `--live` to display jobs from your initialized local SQLite database. The review queue shows existing status and eligibility decisions. Use the displayed job ID with the CLI for rehearsals and receipts. The dashboard reads the database in read-only mode and binds to loopback.
+
+Existing SQLite databases are upgraded when the CLI next opens them. The upgrade preserves existing rows, adds an index for review queries, and records its schema version.
+
+## Provider failures
+
+A discovery request retries timeouts, connection errors, and transient HTTP responses up to twice. Rate-limit instructions are honored when the requested delay is within the short retry budget. An exhausted or permanently failed board appears in the discovery summary, while other successful board results are still processed.
+
+## Ranking benchmark
+
+Run `python -m agent.evaluation --cutoff 5` to compare the agent score and title overlap using [labeled synthetic jobs](examples/ranking-benchmark.json). The report includes normalized discounted cumulative gain (nDCG), strong matches in the top five, and eligibility decisions that disagree with the fixture. The benchmark reads no local applicant data. Its small sample is designed for inspection and regression checks.
+
 ## Workflow
 
 ```powershell
