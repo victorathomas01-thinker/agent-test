@@ -1,3 +1,5 @@
+param([switch]$DemoOnly)
+
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 
@@ -10,6 +12,11 @@ $agentPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 & $agentPython -m playwright install chromium
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+if ($DemoOnly) {
+    Write-Output 'Synthetic demo ready. Run .venv\Scripts\python.exe -m agent.web_dashboard'
+    exit 0
+}
 
 $mvpConfig = Join-Path $env:USERPROFILE 'Downloads\Personal_Job_Agent_MVP\job_agent\config.json'
 if (Test-Path -LiteralPath $mvpConfig) {

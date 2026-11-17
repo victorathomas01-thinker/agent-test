@@ -1,5 +1,7 @@
 # Personal Job Agent
 
+[Release instructions](RELEASE.md)
+
 Discover jobs, explain eligibility, review applications, and rehearse forms through a Python workflow with a local web dashboard.
 
 **[Two-minute walkthrough](DEMO.md) · [Setup](#windows-setup) · [Ranking benchmark](#ranking-benchmark)**
