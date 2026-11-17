@@ -12,6 +12,7 @@ from agent.receipts import read_receipt, record_receipt, scan_receipts
 from agent.rehearsal import run_rehearsal
 from agent.resume import write_preview
 from agent.sessions import sign_in
+from agent.storage import review_jobs
 from agent.submission import official_job_url, release_submission, review_submission
 
 
@@ -23,10 +24,15 @@ def positive_integer(value):
 
 
 def discover_jobs(cfg):
-    jobs, errors = core.discover(cfg)
+    metrics = {}
+    jobs, errors = core.discover(cfg, metrics=metrics)
     new = core.store_jobs(jobs, cfg)
     employers = len({job['id'].rsplit(':', 1)[0] for job in jobs})
     print(f'Fetched {len(jobs)} listings from {employers} employer boards, {new} new.')
+    for provider, stats in sorted(metrics.items()):
+        print(f'{provider} | {stats["boards"]} boards | {stats["listings"]} fetched | '
+              f'{stats["retries"]} retries | {stats["failures"]} failed | '
+              f'{stats["elapsed_seconds"]:.2f}s combined board time')
     for error in errors:
         print('SOURCE ERROR', error)
     if errors and not jobs:
@@ -63,12 +69,7 @@ def scan_local_receipts(con):
 
 
 def print_review_queue(con, limit):
-    jobs = con.execute("""SELECT * FROM jobs
-        WHERE status='submission_pending'
-           OR (eligible=1 AND status IN ('needs_review', 'prepared', 'failed'))
-        ORDER BY CASE status WHEN 'submission_pending' THEN 0 WHEN 'prepared' THEN 1
-                             WHEN 'needs_review' THEN 2 ELSE 3 END, score DESC, id LIMIT ?""",
-                       (limit,)).fetchall()
+    jobs = review_jobs(con, limit)
     if not jobs:
         print('No applications are waiting for review.')
     for job in jobs:

@@ -1,0 +1,133 @@
+{
+  "description": "Synthetic listings for an early-career applicant looking for Charlotte or US-remote roles. Grades: 0 unsuitable, 1 worth reviewing, 2 strong match. Eligibility is graded independently.",
+  "config": {
+    "preferences": {
+      "minimum_score": 20,
+      "keywords": [
+        "software engineer",
+        "developer",
+        "data analyst",
+        "it support",
+        "intern"
+      ],
+      "locations": [
+        "charlotte",
+        "remote"
+      ],
+      "exclude_contract": true,
+      "exclude_senior": true,
+      "exclude_hard_gpa_over": 3.2
+    },
+    "verified_answers": {}
+  },
+  "cases": [
+    {
+      "id": "se-intern",
+      "title": "Software Engineering Intern",
+      "location": "Charlotte, NC",
+      "description": "Summer internship on an application team.",
+      "relevance": 2,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/se-intern"
+    },
+    {
+      "id": "data-intern",
+      "title": "Data Analyst Intern",
+      "location": "Remote US",
+      "description": "SQL and dashboard internship.",
+      "relevance": 2,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/data-intern"
+    },
+    {
+      "id": "junior-dev",
+      "title": "Junior Developer",
+      "location": "Charlotte, NC",
+      "description": "Entry-level backend development.",
+      "relevance": 2,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/junior-dev"
+    },
+    {
+      "id": "support",
+      "title": "IT Support Specialist",
+      "location": "Charlotte, NC",
+      "description": "Full-time support role open to new graduates.",
+      "relevance": 1,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/support"
+    },
+    {
+      "id": "analyst",
+      "title": "Data Analyst",
+      "location": "Remote US",
+      "description": "Analytics reporting and SQL.",
+      "relevance": 1,
+      "eligible": true,
+      "url": "https://example.invalid/jobs/analyst"
+    },
+    {
+      "id": "senior",
+      "title": "Senior Software Engineer",
+      "location": "Remote US",
+      "description": "7+ years of experience.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/senior"
+    },
+    {
+      "id": "contract",
+      "title": "Contract Data Analyst",
+      "location": "Charlotte, NC",
+      "description": "1099 position.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/contract"
+    },
+    {
+      "id": "nonlocal",
+      "title": "Software Engineer Intern",
+      "location": "Remote Canada",
+      "description": "Role based in Canada.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/nonlocal"
+    },
+    {
+      "id": "missing",
+      "title": "Developer Intern",
+      "location": "",
+      "description": "Location is pending.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/missing"
+    },
+    {
+      "id": "sponsor",
+      "title": "Software Engineer Intern",
+      "location": "Charlotte, NC",
+      "description": "No visa sponsorship.",
+      "relevance": 1,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/sponsor"
+    },
+    {
+      "id": "senior-title",
+      "title": "IT Support Manager",
+      "location": "Charlotte, NC",
+      "description": "Management role.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/senior-title"
+    },
+    {
+      "id": "unrelated",
+      "title": "Marketing Intern",
+      "location": "Charlotte, NC",
+      "description": "Internship in email campaigns.",
+      "relevance": 0,
+      "eligible": false,
+      "url": "https://example.invalid/jobs/unrelated"
+    }
+  ]
+}

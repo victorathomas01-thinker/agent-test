@@ -8,6 +8,8 @@ ORIGIN = 'https://employer-rehearsal.invalid'
 FORM = ORIGIN + '/apply'
 SUBMIT = ORIGIN + '/submit'
 REFERENCE = 'simulation-001'
+MOCK_COMPANY = 'Sample Studio'
+MOCK_TITLE = 'Software Engineer Intern'
 
 SYNTHETIC_PROFILE = {
     'profile': {'first_name': 'Sample', 'email': 'applicant@example.invalid'},
@@ -24,7 +26,7 @@ FORM_HTML = """
 """
 
 
-def rehearse_submission(browser, response_mode='confirmed', config=SYNTHETIC_PROFILE):
+def rehearse_submission(browser, response_mode='confirmed', config=SYNTHETIC_PROFILE, *, on_receipt=None):
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
     context = browser.new_context(java_script_enabled=False, service_workers='block',
@@ -41,7 +43,7 @@ def rehearse_submission(browser, response_mode='confirmed', config=SYNTHETIC_PRO
             if len(posted) != 1 or posted[0] != expected or response_mode == 'rejected':
                 route.fulfill(status=422, content_type='text/html', body='<h1>Application rejected</h1>')
             else:
-                body = '<h1>Application received</h1>'
+                body = f'<h1>Your application was received for {MOCK_TITLE} at {MOCK_COMPANY}.</h1>'
                 if response_mode == 'confirmed':
                     body += f'<p data-confirmation-reference="{REFERENCE}">{REFERENCE}</p>'
                 route.fulfill(status=200, content_type='text/html', body=body)
@@ -72,6 +74,8 @@ def rehearse_submission(browser, response_mode='confirmed', config=SYNTHETIC_PRO
         receipt = page.locator(f'[data-confirmation-reference="{REFERENCE}"]')
         if len(posted) != 1 or receipt.count() != 1 or receipt.inner_text().strip() != REFERENCE:
             return 'unconfirmed', 'The mock employer response lacked a matching confirmation reference.'
+        if on_receipt is not None:
+            on_receipt(page.locator('body').inner_text())
         return 'confirmed', f'The mock employer confirmed exactly one simulated application ({REFERENCE}).'
     finally:
         context.close()
