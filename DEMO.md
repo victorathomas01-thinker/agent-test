@@ -3,7 +3,7 @@
 ## Two-minute demo
 
 1. Install the requirements, then run `python -m agent.web_dashboard`. Open [the local dashboard](http://127.0.0.1:8765). Show the ranked listings, the excluded listing's reason, and the Review queue. This default mode uses synthetic data.
-2. In another terminal, run `python main.py rehearse-submit`. Show the confirmation reference from the isolated mock employer. The dashboard rows and the isolated rehearsal are separate examples.
+2. Run `python -m agent.portfolio_demo`. Follow one synthetic job ID through discovery, the review queue, an offline browser rehearsal, and receipt matching. The test suite verifies that the dashboard API shows the same job before and after the receipt. This walkthrough uses a temporary database and synthetic applicant data.
 3. Run `python -m agent.evaluation --fixture examples/ranking-holdout.json --cutoff 5`. Explain nDCG as a measure of how high the manually labeled relevant jobs appear. Review the eligibility mismatch list separately.
 
 ## Verify a real local workflow
