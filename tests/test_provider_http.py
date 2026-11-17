@@ -50,10 +50,17 @@ class ProviderHttpTest(unittest.TestCase):
 
         with patch.object(provider_http, 'urlopen', side_effect=respond) as request, \
                 patch.object(provider_http, 'sleep'):
-            jobs, errors = core.discover(config)
+            metrics = {}
+            jobs, errors = core.discover(config, metrics=metrics)
         self.assertEqual(request.call_count, 5)
         self.assertEqual([job['id'] for job in jobs], ['greenhouse:studio:42', 'lever:example:abc'])
         self.assertEqual(jobs[0]['description'], 'Build & test')
         self.assertEqual(jobs[1]['location'], 'Charlotte, NC, Remote')
         self.assertEqual(len(errors), 1)
         self.assertIn('greenhouse outage', errors[0])
+        self.assertEqual(metrics['greenhouse']['boards'], 2)
+        self.assertEqual(metrics['greenhouse']['retries'], 2)
+        self.assertEqual(metrics['greenhouse']['failures'], 1)
+        self.assertEqual(metrics['greenhouse']['listings'], 1)
+        self.assertEqual(metrics['lever']['listings'], 1)
+        self.assertEqual(metrics['lever']['retries'], 0)

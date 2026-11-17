@@ -7,6 +7,7 @@ from pathlib import Path
 import sqlite3
 
 from . import core
+from .storage import review_jobs
 
 DEMO_JOBS = (
     ('Software engineering intern', 'Sample employer A', 'Charlotte, NC', 68, 1, 'prepared', ''),
@@ -24,12 +25,16 @@ def is_review_job(eligible, status):
     )
 
 
-def load_jobs(database, *, include_id=False):
-    columns = 'title, company, location, score, eligible, status, reason'
+def load_jobs(database, *, include_id=False, review=False, limit=-1):
+    fields = ('title', 'company', 'location', 'score', 'eligible', 'status', 'reason')
     if include_id:
-        columns = 'id, ' + columns
+        fields = ('id', *fields)
     with closing(sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True)) as con:
-        return con.execute(f'SELECT {columns} FROM jobs ORDER BY score DESC, id').fetchall()
+        if review:
+            con.row_factory = sqlite3.Row
+            return [tuple(row[field] for field in fields) for row in review_jobs(con, limit)]
+        columns = ', '.join(fields)
+        return con.execute(f'SELECT {columns} FROM jobs ORDER BY score DESC, id LIMIT ?', (limit,)).fetchall()
 
 
 def render_dashboard(jobs, *, demo, interactive=False):

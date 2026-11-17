@@ -2,13 +2,14 @@ from concurrent.futures import ThreadPoolExecutor
 import csv, hashlib, html, json, re, urllib.parse
 from contextlib import closing
 from tempfile import NamedTemporaryFile
+from time import perf_counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .eligibility import evaluate, preferred_location, valid_application_url
 from .employers import board_from_url, find_boards
 
-from .provider_http import http_json
+from .provider_http import http_json, retry_count
 from .storage import connect as connect_database
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -123,7 +124,7 @@ def discovery_rank(listing, cfg):
     return max(map(match, locations or ['']))
 
 
-def discover(cfg):
+def discover(cfg, *, metrics=None):
     discovery = cfg['discovery']
     configured = [
         ('greenhouse', slug, slug) for slug in discovery['greenhouse_boards']
@@ -143,18 +144,34 @@ def discover(cfg):
 
     def fetch(source):
         provider, slug, company = source
+        token = retry_count.set(0)
+        start = perf_counter()
         try:
-            return fetch_board(provider, slug, company, discovery['max_per_source'],
-                               (provider, slug) in discovered), None
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            return [], f'{provider} {slug}: {error}'
+            try:
+                postings = fetch_board(provider, slug, company, discovery['max_per_source'],
+                                       (provider, slug) in discovered)
+                error = None
+            except (OSError, ValueError, KeyError, TypeError) as failure:
+                postings, error = [], f'{provider} {slug}: {failure}'
+            return postings, error, retry_count.get(), perf_counter() - start
+        finally:
+            retry_count.reset(token)
 
     jobs = []
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for postings, error in pool.map(fetch, sources):
+        for (provider, _, _), (postings, error, retries, elapsed) in zip(
+                sources, pool.map(fetch, sources), strict=True):
             jobs.extend(postings)
             if error:
                 errors.append(error)
+            if metrics is not None:
+                stats = metrics.setdefault(provider, dict(boards=0, listings=0, retries=0,
+                                                           failures=0, elapsed_seconds=0.0))
+                stats['boards'] += 1
+                stats['listings'] += len(postings)
+                stats['retries'] += retries
+                stats['failures'] += int(error is not None)
+                stats['elapsed_seconds'] += elapsed
     return jobs, errors
 
 def lever_location(item):

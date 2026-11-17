@@ -20,13 +20,13 @@ Run `python -m agent.dashboard --live` to generate an offline snapshot of your i
 
 ## Local web dashboard
 
-Start the synthetic dashboard with `python -m agent.web_dashboard` and open http://127.0.0.1:8765. Pass `--live` to display jobs from your initialized local SQLite database. The review queue shows existing status and eligibility decisions. Use the displayed job ID with the CLI for rehearsals and receipts. The dashboard reads the database in read-only mode and binds to loopback.
+Start the synthetic dashboard with `python -m agent.web_dashboard` and open http://127.0.0.1:8765. Pass `--live` to display jobs from your initialized local SQLite database. The review queue uses the same status priority as the CLI. The views show up to 100 jobs by default. Use the displayed job ID with the CLI for rehearsals and receipts. The dashboard reads the database in read-only mode and binds to loopback.
 
 Existing SQLite databases are upgraded when the CLI next opens them. The upgrade preserves existing rows, adds an index for review queries, and records its schema version.
 
 ## Provider failures
 
-A discovery request retries timeouts, connection errors, and transient HTTP responses up to twice. Rate-limit instructions are honored when the requested delay is within the short retry budget. An exhausted or permanently failed board appears in the discovery summary, while other successful board results are still processed.
+Run the discovery command to see fetched and newly stored totals plus per-provider board counts, retries, failures, and combined board time. A discovery request retries timeouts, connection errors, and transient HTTP responses up to twice. Rate-limit instructions are honored when the requested delay is within the short retry budget. An exhausted or permanently failed board appears in the discovery summary, while other successful board results are still processed.
 
 ## Ranking benchmark
 

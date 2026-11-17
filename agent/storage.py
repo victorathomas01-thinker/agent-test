@@ -41,3 +41,13 @@ def create_baseline(con):
        day TEXT NOT NULL, job_id TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (day, job_id))''')
     con.execute('''CREATE TABLE IF NOT EXISTS receipts (
        job_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE, recorded_at TEXT NOT NULL)''')
+
+
+def review_jobs(con, limit):
+    """Return the same bounded, status-prioritized queue to all callers."""
+    return con.execute("""SELECT * FROM jobs
+        WHERE status='submission_pending'
+           OR (eligible=1 AND status IN ('needs_review', 'prepared', 'failed'))
+        ORDER BY CASE status WHEN 'submission_pending' THEN 0 WHEN 'prepared' THEN 1
+                             WHEN 'needs_review' THEN 2 ELSE 3 END, score DESC, id
+        LIMIT ?""", (limit,)).fetchall()

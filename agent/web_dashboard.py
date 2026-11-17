@@ -25,23 +25,25 @@ def create_app(database=None):
         response.headers['Cache-Control'] = 'no-store'
         return response
 
-    def get_rows(view):
+    def get_rows(view, limit):
         try:
-            rows = load_jobs(database, include_id=True) if database is not None else DEMO_ROWS
+            if database is not None:
+                return load_jobs(database, include_id=True, review=view == 'review', limit=limit)
+            rows = DEMO_ROWS
         except sqlite3.Error as error:
             raise HTTPException(503, 'The local job database is unavailable. Run main.py init first.') from error
         if view == 'review':
-            return [row for row in rows if is_review_job(row[5], row[6])]
-        return rows
+            rows = [row for row in rows if is_review_job(row[5], row[6])]
+        return rows[:limit]
 
     @app.get('/', response_class=HTMLResponse)
-    def dashboard(view: str = Query('all', pattern='^(all|review)$')):
-        return render_dashboard(get_rows(view), demo=database is None, interactive=True)
+    def dashboard(view: str = Query('all', pattern='^(all|review)$'), limit: int = Query(100, ge=1, le=500)):
+        return render_dashboard(get_rows(view, limit), demo=database is None, interactive=True)
 
     @app.get('/api/jobs')
-    def jobs(view: str = Query('all', pattern='^(all|review)$')):
+    def jobs(view: str = Query('all', pattern='^(all|review)$'), limit: int = Query(100, ge=1, le=500)):
         return [{'id': row[0], **dict(zip(FIELDS, row[1:], strict=True))}
-                for row in get_rows(view)]
+                for row in get_rows(view, limit)]
 
     return app
 

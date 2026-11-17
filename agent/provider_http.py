@@ -1,5 +1,6 @@
 """Bounded retries for public job board and feed reads."""
 
+from contextvars import ContextVar
 import json
 from time import sleep
 from urllib.error import HTTPError, URLError
@@ -8,6 +9,7 @@ from urllib.request import Request, urlopen
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 RETRY_DELAYS = (1, 2)
 MAX_RETRY_AFTER = 5
+retry_count = ContextVar("provider_retry_count", default=0)
 
 
 def http_json(url):
@@ -35,4 +37,5 @@ def http_json(url):
             reason = error.reason if isinstance(error, URLError) else error
             if delay is None or not isinstance(reason, (TimeoutError, ConnectionError)):
                 raise
+        retry_count.set(retry_count.get() + 1)
         sleep(delay)
