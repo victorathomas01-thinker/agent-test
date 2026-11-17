@@ -1,5 +1,9 @@
 # Personal Job Agent walkthrough
 
+## Before presenting
+
+Install the [README dependencies](README.md#windows-setup) and start the synthetic web dashboard. Keep a terminal beside the browser. The default dashboard contains fixed sample rows. The portfolio walkthrough creates its own temporary database and checks the dashboard API against that database at each transition.
+
 ## Two-minute demo
 
 1. Install the requirements, then run `python -m agent.web_dashboard`. Open [the local dashboard](http://127.0.0.1:8765). Show the ranked listings, the excluded listing's reason, and the Review queue. This default mode uses synthetic data.

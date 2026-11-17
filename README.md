@@ -18,6 +18,19 @@ Install the dependencies in the setup instructions before running these commands
 
 **Architecture.** Provider adapters feed normalized listings into eligibility rules and SQLite. The CLI and FastAPI dashboard share the review-queue query. Browser rehearsal and receipt matching record application outcomes.
 
+## Release status
+
+This branch contains the portfolio release candidate. Use the synthetic dashboard and temporary same-job walkthrough to inspect it before configuring a personal profile.
+
+| Capability | Evidence |
+| --- | --- |
+| Dashboard and review queue | Local API checks and shared CLI queue ordering |
+| Same-job walkthrough | One temporary job moves through review, offline browser rehearsal, and receipt matching |
+| Provider recovery and database upgrade | Included in the 51-test suite that passed locally and in Windows CI |
+| Ranking evaluation | Ten synthetic holdout jobs, with relevance and eligibility reported separately |
+
+The dashboard sample rows and temporary same-job walkthrough use separate datasets. The walkthrough checks dashboard API state at each transition and prints the result in the terminal.
+
 ## Windows setup
 
 With Python 3.11 or later installed, run `pwsh -File setup.ps1` in the repository folder. This installs Playwright and Chromium, creates the local profile and database, and runs the tests. Setup imports the existing MVP configuration from Downloads when present. For an MVP installed elsewhere, run `python main.py init --from-mvp PATH_TO_CONFIG` before setup.
