@@ -1,6 +1,22 @@
 # Personal Job Agent
 
-Discover jobs from public Greenhouse and Lever boards, filter and rank them, and rehearse filling application forms locally. Automatic submission is disabled. In a dry run the agent opens the posting without applicant data, then fills a disconnected copy with site scripts disabled.
+Discover jobs, explain eligibility, review applications, and rehearse forms through a Python workflow with a local web dashboard.
+
+**[Two-minute walkthrough](DEMO.md) · [Setup](#windows-setup) · [Ranking benchmark](#ranking-benchmark)**
+
+| Start here | Command | Result |
+| --- | --- | --- |
+| See the dashboard | `python -m agent.web_dashboard` | Synthetic jobs at http://127.0.0.1:8765 |
+| Follow one job | `python -m agent.portfolio_demo` | Discovery → review → offline rehearsal → matched receipt |
+| Inspect ranking | `python -m agent.evaluation --fixture examples/ranking-holdout.json` | Reproducible report for ten synthetic jobs |
+
+Install the dependencies in the setup instructions before running these commands. Both demonstrations work with synthetic applicant data. The dashboard binds to loopback and reads the job database without writing to it.
+
+**Engineering evidence.** 51 local tests and Windows CI passed before this documentation update, including provider failures, database upgrades, and the same-job workflow. The synthetic holdout scored 0.51 nDCG@5 for the agent and 0.48 for title overlap. Eligibility matched all ten fixture labels.
+
+**Workflow boundaries.** Discovery uses public Greenhouse and Lever boards. Dry runs fill disconnected forms. Live submissions use the attended review workflow documented below.
+
+**Architecture.** Provider adapters feed normalized listings into eligibility rules and SQLite. The CLI and FastAPI dashboard share the review-queue query. Browser rehearsal and receipt matching record application outcomes.
 
 ## Windows setup
 

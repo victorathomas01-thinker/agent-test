@@ -13,3 +13,7 @@ Use `python main.py init` to initialize your local profile and database. Use `py
 ## Evaluation evidence
 
 The baseline and holdout are small, independently authored sets of synthetic listings for the same example preferences. The holdout was added after the ranker was implemented, and the scoring rules were kept fixed. Treat the scores as reproducible fixture results. Real provider distribution, job quality, and ranking utility still need evaluation on a larger authorized sample.
+
+## Presentation notes
+
+Keep the browser at a readable zoom and show one workflow at a time. Explain the result before opening source files. Use the documented synthetic demo for applicant or campaign examples. Give viewers the README link so setup instructions and evidence remain available after the walkthrough.
