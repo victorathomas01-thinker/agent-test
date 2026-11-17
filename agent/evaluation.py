@@ -46,7 +46,14 @@ def run_benchmark(fixture, cutoff):
     decisions = {case['id']: evaluate(case, config) for case in cases}
     baseline = {case['id']: title_overlap(case, config) for case in cases}
     agent = {job_id: score for job_id, (score, _, _) in decisions.items()}
+    eligible_cases = [case for case in cases if decisions[case['id']][1]]
     return {
+        'eligible_only': {
+            'jobs': len(eligible_cases),
+            'cutoff': min(cutoff, len(eligible_cases)),
+            'title_overlap': ranking_metrics(eligible_cases, baseline, cutoff),
+            'agent_score': ranking_metrics(eligible_cases, agent, cutoff),
+        },
         'jobs': len(cases),
         'cutoff': cutoff,
         'title_overlap': ranking_metrics(cases, baseline, cutoff),

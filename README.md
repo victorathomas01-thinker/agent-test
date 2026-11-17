@@ -118,3 +118,7 @@ The agent can reuse a confirmed absence of employment history or referrals for e
 Run `main.py sign-in indeed` in an interactive terminal to open Indeed in a dedicated browser profile. An optional `--job-key` opens a specific listing. Sign in and complete verification in Microsoft Edge, then press Enter in the terminal to close the profile cleanly. Reopening the profile can reuse sessions that Indeed keeps valid. This command opens the listing for manual use.
 
 For a supported employer posting, add `--reuse-session` to `review-submit`. Each employer board has its own local Edge profile. Use your existing account when prompted. Create an account only when needed and handle verification yourself. Dedicated profiles start separately from your everyday Edge profile. If the agent detects a sign-in page, it pauses before prefilling so you can sign in yourself. Keep `private/browser-profiles` on this computer. It contains browser session data and is ignored by Git. Scheduled runs use a fresh browser and flag detected login pages for review.
+
+## Data interpretation update
+
+The ranking evaluation includes an eligible_only section. Both rankers use the same jobs approved by the eligibility rules. The cutoff shrinks to the available sample, and eligibility mismatches remain visible in the overall report.
