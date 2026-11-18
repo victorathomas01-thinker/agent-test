@@ -35,6 +35,10 @@ The dashboard sample rows and temporary same-job walkthrough use separate datase
 
 ## Windows setup
 
+### Contributor checks
+
+Install `requirements-dev.txt` for the pinned Ruff tool alongside the runtime dependencies. Run `python -m ruff check .`, `python -m ruff format --check .`, and `python -m unittest discover -s tests -v` before opening a pull request. To apply the formatter, use `python -m ruff format .`. Windows CI runs both lint and formatting checks before the existing test suite. The Python 3.11 target and lint rules are recorded in `pyproject.toml`.
+
 With Python 3.11 or later installed, run `pwsh -File setup.ps1` in the repository folder. This installs Playwright and Chromium, creates the local profile and database, and runs the tests. Setup imports the existing MVP configuration from Downloads when present. For an MVP installed elsewhere, run `python main.py init --from-mvp PATH_TO_CONFIG` before setup.
 
 On other platforms, run `python -m pip install -r requirements.txt`, `python -m playwright install chromium`, and `python main.py init`. Run `python -m unittest discover -s tests -v` to verify the install.
