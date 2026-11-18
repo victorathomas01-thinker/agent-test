@@ -236,7 +236,7 @@ class BrowserTest(unittest.TestCase):
                     context = self.browser.new_context(offline=True)
                     try:
 
-                        def respond(route, action=action, mode=mode):
+                        def respond(route, _request, *, action=action, mode=mode):
                             request = route.request
                             if request.url == url and request.method == "GET":
                                 route.fulfill(
