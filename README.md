@@ -4,12 +4,12 @@
 
 Discover jobs, explain eligibility, review applications, and rehearse forms through a Python workflow with a local web dashboard.
 
-**[Two-minute walkthrough](DEMO.md) Â· [Setup](#windows-setup) Â· [Ranking benchmark](#ranking-benchmark)**
+**[Two-minute walkthrough](DEMO.md) · [Setup](#windows-setup) · [Ranking benchmark](#ranking-benchmark)**
 
 | Start here | Command | Result |
 | --- | --- | --- |
 | See the dashboard | `python -m agent.web_dashboard` | Synthetic jobs at http://127.0.0.1:8765 |
-| Follow one job | `python -m agent.portfolio_demo` | Discovery â†’ review â†’ offline rehearsal â†’ matched receipt |
+| Follow one job | `python -m agent.portfolio_demo` | Discovery → review → offline rehearsal → matched receipt |
 | Inspect ranking | `python -m agent.evaluation --fixture examples/ranking-holdout.json` | Reproducible report for ten synthetic jobs |
 
 Install the dependencies in the setup instructions before running these commands. Both demonstrations work with synthetic applicant data. The dashboard binds to loopback and reads the job database without writing to it.
@@ -35,7 +35,7 @@ The dashboard sample rows and temporary same-job walkthrough use separate datase
 
 ## Contributor checks
 
-Install `requirements-dev.txt` for the pinned Ruff tool alongside the runtime dependencies. Run `python -m ruff check .`, `python -m ruff format --check .`, and `python -m unittest discover -s tests -v` before opening a pull request. To apply the formatter, use `python -m ruff format .`. Windows CI runs both lint and formatting checks before the existing test suite. The Python 3.11 target and lint rules are recorded in `pyproject.toml`.
+Install `requirements-dev.txt` for pinned Ruff alongside the runtime dependencies. Run `python -m ruff check .`, `python -m ruff format --check .`, and `python -m unittest discover -s tests -v` before opening a pull request. Use `python -m ruff format .` to apply formatting. Windows CI runs the lint and formatting gates before the existing test suite. Python 3.11 and the rule selection are configured in `pyproject.toml`.
 
 ## Windows setup
 
