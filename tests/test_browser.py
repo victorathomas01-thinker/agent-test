@@ -213,14 +213,21 @@ class BrowserTest(unittest.TestCase):
         )
         self.assertTrue(official_job_url(job))
         self.assertFalse(official_job_url({**job, "url": url.replace("/123", "/456")}))
-        for mode in ("named", "job_specific", "generic_wrong_route", "ambiguous"):
-            confirmed = mode in {"named", "job_specific"}
+        for mode, status in (
+            ("named", 200),
+            ("job_specific", 200),
+            ("generic_wrong_route", 200),
+            ("ambiguous", 200),
+            ("named", 500),
+            ("job_specific", 500),
+        ):
+            confirmed = status == 200 and mode in {"named", "job_specific"}
             action = (
                 url + "/confirmation"
                 if mode == "job_specific"
                 else "https://job-boards.greenhouse.io/mock-submit"
             )
-            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as folder:
+            with self.subTest(mode=mode, status=status), tempfile.TemporaryDirectory() as folder:
                 with (
                     patch.object(core, "DB", Path(folder) / "agent.sqlite3"),
                     closing(core.connect()) as con,
@@ -234,16 +241,19 @@ class BrowserTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "unresolved submission"):
                         reserve_submission(con, job)
                     context = self.browser.new_context(offline=True)
+                    posts = []
                     try:
-
-                        def respond(route, _request, *, action=action, mode=mode):
-                            request = route.request
+                        # Playwright supplies (route, request); fixture values must be keyword-only.
+                        def respond(
+                            route, request, *, action=action, mode=mode, status=status, posts=posts
+                        ):
                             if request.url == url and request.method == "GET":
                                 route.fulfill(
                                     content_type="text/html",
                                     body=f'<form method="post" action="{action}"><button>Submit</button></form>',
                                 )
                             elif request.url == action and request.method == "POST":
+                                posts.append(request.url)
                                 text = {
                                     "named": "Thank you for applying to Example for the Software Engineer role.",
                                     "job_specific": "Thank you for applying",
@@ -251,6 +261,7 @@ class BrowserTest(unittest.TestCase):
                                     "ambiguous": "Your application status is unavailable.",
                                 }[mode]
                                 route.fulfill(
+                                    status=status,
                                     content_type="text/html",
                                     body=f"<title>{text}</title><h1>{text}</h1>",
                                 )
@@ -264,6 +275,9 @@ class BrowserTest(unittest.TestCase):
                         )
                     finally:
                         context.close()
+                    self.assertEqual(
+                        posts, [action], "The fixture must receive the submission POST."
+                    )
                     self.assertEqual(result, "submitted" if confirmed else "submission_pending")
                     core.add_attempt(job["id"], "needs_review", "Late preview result.")
                     self.assertEqual(con.execute("SELECT status FROM jobs").fetchone()[0], result)
