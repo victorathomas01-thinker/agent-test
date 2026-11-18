@@ -1,7 +1,7 @@
 """Bounded retries for public job board and feed reads."""
 
-from contextvars import ContextVar
 import json
+from contextvars import ContextVar
 from time import sleep
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -13,10 +13,13 @@ retry_count = ContextVar("provider_retry_count", default=0)
 
 
 def http_json(url):
-    request = Request(url, headers={
-        'User-Agent': 'PersonalJobAgent/0.1 (personal job discovery)',
-        'Accept': 'application/json',
-    })
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "PersonalJobAgent/0.1 (personal job discovery)",
+            "Accept": "application/json",
+        },
+    )
     for attempt in range(len(RETRY_DELAYS) + 1):
         delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else None
         try:
@@ -25,7 +28,7 @@ def http_json(url):
         except HTTPError as error:
             if delay is None or error.code not in RETRYABLE_STATUS:
                 raise
-            retry_after = error.headers.get('Retry-After') if error.headers else None
+            retry_after = error.headers.get("Retry-After") if error.headers else None
             if retry_after is not None:
                 if not retry_after.isascii() or not retry_after.isdecimal() or len(retry_after) > 9:
                     raise

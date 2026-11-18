@@ -33,6 +33,10 @@ This branch contains the portfolio release candidate. Use the synthetic dashboar
 
 The dashboard sample rows and temporary same-job walkthrough use separate datasets. The walkthrough checks dashboard API state at each transition and prints the result in the terminal.
 
+## Contributor checks
+
+Install `requirements-dev.txt` for pinned Ruff alongside the runtime dependencies. Run `python -m ruff check .`, `python -m ruff format --check .`, and `python -m unittest discover -s tests -v` before opening a pull request. Use `python -m ruff format .` to apply formatting. Windows CI runs the lint and formatting gates before the existing test suite. Python 3.11 and the rule selection are configured in `pyproject.toml`.
+
 ## Windows setup
 
 With Python 3.11 or later installed, run `pwsh -File setup.ps1` in the repository folder. This installs Playwright and Chromium, creates the local profile and database, and runs the tests. Setup imports the existing MVP configuration from Downloads when present. For an MVP installed elsewhere, run `python main.py init --from-mvp PATH_TO_CONFIG` before setup.
